@@ -1,0 +1,1 @@
+# Guarda classes como SegmentoRoteiro, ResultadoComparacao, EventoSistema.

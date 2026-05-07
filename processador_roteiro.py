@@ -1,0 +1,1 @@
+# Lê o JSON, limpa tags, remove comandos técnicos e gera segmentos faláveis.

@@ -1,0 +1,1 @@
+# Cuida do Vosk: parcial, final, reset e erros.

@@ -1,0 +1,1 @@
+# Guarda caminhos, thresholds, cooldowns, modo de teste, modelo Vosk e configurações de rolagem.

@@ -1,0 +1,1 @@
+# Normaliza acentos, pontuação, números, barras, hífens e variações.

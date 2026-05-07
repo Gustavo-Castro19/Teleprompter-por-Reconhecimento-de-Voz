@@ -1,0 +1,1 @@
+# Compara fala com roteiro e decide melhor candidato.

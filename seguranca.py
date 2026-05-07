@@ -1,0 +1,1 @@
+# Senha, variáveis de ambiente, proteção de dados e futuras regras de acesso
