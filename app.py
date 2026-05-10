@@ -1,6 +1,4 @@
-import hashlib
-import getpass
-import sys
+
 import time
 import os
 import json
@@ -14,53 +12,10 @@ from configuracoes import CONFIG
 from normalizador_texto import UtilTexto
 from processador_roteiro import ProcessadorRoteiro
 from alinhador_roteiro import AlinhadorRoteiro
+from seguranca import Cores, checagem_seguranca
+from maquina_estados import MaquinaEstados
+from registrador_eventos import RegistradorEventos
 
-# --- 🔒 TRAVA DE SEGURANÇA ---
-__AUTOR__ = "Diego Marcelo & Ana Luísa - SQUAD 29"
-# -----------------------------
-
-class Cores:
-    BASE = "\033[0m" # Valor padrão de textos do teleprompt
-    NEGRITO = "\033[1m"
-    VERDE = "\033[92m"
-    VERMELHO = "\033[91m"
-    CIANO = "\033[96m"
-    BG_CIANO = "\033[46m" # Valor de cor de fundo na cor ciano
-    PRETO = "\033[30m"
-
-def checagem_seguranca():
-    os.system('cls' if os.name == 'nt' else 'clear')
-    try:
-        if globals().get("__AUTOR__") != "Diego Marcelo & Ana Luísa - SQUAD 29":
-            raise ValueError("Falha na verificação de integridade")
-    except:
-        print("Erro de integridade.")
-        sys.exit(1)
-
-    print("\n" + "="*60)
-    print(f"{Cores.BG_CIANO}{Cores.PRETO}{Cores.NEGRITO}  Mecanismo de transmissão de teleprompter - SQUAD 29  {Cores.BASE}")
-    print(f"{Cores.CIANO}  Devs: {__AUTOR__} {Cores.BASE}")
-    print("="*60 + "\n")
-    
-    # Hash é um algoritmo matemático que transforma data em uma sequência única de caracteres de comprimento fixo, seria um cpf para o dado
-    # o Hash abaixo se trata da senha que está sendo usada para poder usar o nosso sistema.
-    HASH_CORRETO = "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92"
-
-    tentativas = 3
-    while tentativas > 0:
-        try:
-            senha = getpass.getpass(f"Senha de Acesso ({tentativas}x): ")
-        except:
-            senha = input(f"Senha de Acesso ({tentativas}x): ")
-            
-        if hashlib.sha256(senha.encode()).hexdigest() == HASH_CORRETO:
-            print(f"\n{Cores.VERDE}✔ Sistema Armado.{Cores.BASE}\n")
-            time.sleep(1)
-            return
-        else:
-            print(f"{Cores.VERMELHO}Senha incorreta.{Cores.BASE}")
-            tentativas -= 1
-    sys.exit(1)
 
 app = Flask(__name__)
 app.config['CHAVE_ACESSO'] = 'chave_squad29'
@@ -69,19 +24,9 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_
 
 # indica as princiapis funções do teleprompt, definindo a abertura do roteiro e que partes do roteiro
 # devem ser lidas ou mostradas
-class EstruturaTelePrompt(ProcessadorRoteiro):
+class EstruturaTelePrompt(ProcessadorRoteiro, MaquinaEstados):
     def __init__(self):
-        self.linhas_roteiro = []
-        self.linhas_exibidas = []
-        self.falar_para_exibir = []
-        self.idx_atual = 0
-        self.correndo = False  # refere a se o sistema está ativo, captando áudio, ou não
-        self.proc_audio = None
-        self.tempo_ultimo_avanco = 0.0   # timestamp do último avanço
-        self.descartar_buffer = False  # sinaliza descarte do buffer de áudio
-        self.ultimo_texto_parcial = ""
-        self.contagem_leitura_parcial = 0  # usado para verificações de segurança que determinam saltos no roteiro a partir de transcrições parciais
-        self.recomecar_bloco_parcial = False
+        MaquinaEstados.__init__(self)
         self.carregar_roteiro()
 
     def iniciar_maquina(self):
@@ -90,7 +35,7 @@ class EstruturaTelePrompt(ProcessadorRoteiro):
         self.proc_audio = socketio.start_background_task(self.processar_laco_audio)
 
     def processar_laco_audio(self):
-        print(f"{Cores.VERDE}--- MáQUINA ATIVA ---{Cores.BASE}")
+        RegistradorEventos.maquina_ativa(Cores)
         if not os.path.exists(CONFIG["caminho_modelo"]): return
 
         modelo      = Model(CONFIG["caminho_modelo"])
@@ -107,7 +52,7 @@ class EstruturaTelePrompt(ProcessadorRoteiro):
             fluxo.read(4096, exception_on_overflow=False) # essa variavel vem do pyaudio então não é possivel alterar
             reconhecedor.Reset()
 
-            print("--- MICROFONE ABERTO ---")
+            RegistradorEventos.microfone_aberto()
 
             while self.correndo:
                 socketio.sleep(0.001)
@@ -154,7 +99,7 @@ class EstruturaTelePrompt(ProcessadorRoteiro):
         mostrar_idx = alinhador.obter_indice_visual(idx)
 
         socketio.emit('cmd', {'index': mostrar_idx, 'type': tipo_evento, 'text': txt})
-        print(f"--> [{tipo_evento.upper()}] Indo para linha falada {idx + 1}, visual {mostrar_idx + 1}")
+        RegistradorEventos.evento_rolagem(tipo_evento, idx, mostrar_idx)
         
     def avaliar(self, texto, parcial):
         total_linhas = len(self.linhas_roteiro)
@@ -173,7 +118,7 @@ class EstruturaTelePrompt(ProcessadorRoteiro):
                 self.ultimo_texto_parcial = n_texto
                 self.contagem_leitura_parcial = 0
                 self.recomecar_bloco_parcial = True
-                print(f"[PARCIAL-BASE] '{texto}' | linha {self.idx_atual + 1}: '{linha_atual[:40]}'")
+                RegistradorEventos.reconhecimento("PARCIAL-BASE", texto, self.idx_atual, linha_atual)
                 return False
 
             self.ultimo_texto_parcial = n_texto
@@ -206,7 +151,7 @@ class EstruturaTelePrompt(ProcessadorRoteiro):
             else:
                 self.contagem_leitura_parcial = 0
 
-            print(f"[PARCIAL] '{texto}' | linha {self.idx_atual + 1}: '{linha_atual[:40]}'")
+            RegistradorEventos.reconhecimento("PARCIAL", texto, self.idx_atual, linha_atual)
             return False
         
         # ── Cooldown pós-avanço ──────────────────────────────────────────
@@ -263,7 +208,8 @@ class EstruturaTelePrompt(ProcessadorRoteiro):
         #________________________________________
 
         linha_atual = self.linhas_roteiro[self.idx_atual]
-        print(f"[{'PARCIAL' if parcial else 'FINAL'}] '{texto}' | linha {self.idx_atual + 1}: '{linha_atual[:40]}'")
+        tipo_log = "PARCIAL" if parcial else "FINAL"
+        RegistradorEventos.reconhecimento(tipo_log, texto, self.idx_atual, linha_atual)
         return False
 
 
@@ -275,7 +221,7 @@ def index():
 
 @socketio.on('connect')
 def gerenciar_conexao():
-    print('CLIENTE CONECTADO')
+    RegistradorEventos.cliente_conectado()
     alinhador = AlinhadorRoteiro(estrutura.falar_para_exibir, estrutura.linhas_exibidas)
     first_idx = alinhador.obter_primeiro_indice_visual()
     socketio.emit('cmd', {'index': first_idx, 'type': 'sync', 'text': ''})
@@ -283,5 +229,5 @@ def gerenciar_conexao():
 
 if __name__ == '__main__':
     # checagem_seguranca()
-    print(f"Servidor: http://127.0.0.1:5500")
+    RegistradorEventos.servidor("http://127.0.0.1:5500")
     socketio.run(app, debug=True, port=5500)
