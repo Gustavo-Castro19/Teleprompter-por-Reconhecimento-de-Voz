@@ -1,6 +1,5 @@
-<<<<<<< Updated upstream
 # Cuida do Vosk: parcial, final, reset e erros.
-=======
+
 # Reconhecedor_fala.py
 # Responsável por inicializar e usar o Vosk.
 # Ele recebe áudio bruto e devolve texto parcial ou final.
@@ -53,4 +52,3 @@ class ReconhecedorFala:
         # Reseta o reconhecedor para evitar repetição de áudio antigo.
         if self.reconhecedor:
             self.reconhecedor.Reset()
->>>>>>> Stashed changes
