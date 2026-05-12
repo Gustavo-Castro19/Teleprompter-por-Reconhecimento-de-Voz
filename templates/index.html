@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Teleprompter SQUAD 29</title>
+    <style>
+        body {
+            background: #111;
+            color: white;
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            font-size: 32px;
+            line-height: 1.6;
+        }
+
+        .linha {
+            opacity: 0.45;
+        }
+
+        .ativa {
+            opacity: 1;
+            color: #00d4ff;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="roteiro">
+        {% for linha in script %}
+            <div class="linha" id="linha-{{ loop.index0 }}">
+                {{ linha }}
+            </div>
+        {% endfor %}
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <script>
+        const socket = io();
+
+        socket.on("cmd", function(dados) {
+            document.querySelectorAll(".linha").forEach(linha => {
+                linha.classList.remove("ativa");
+            });
+
+            const linhaAtual = document.getElementById("linha-" + dados.index);
+
+            if (linhaAtual) {
+                linhaAtual.classList.add("ativa");
+                linhaAtual.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center"
+                });
+            }
+        });
+    </script>
+</body>
+</html>

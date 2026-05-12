@@ -1,233 +1,164 @@
+# App.py
+# Arquivo principal do sistema.
+# Ele sobe Flask, SocketIO e conecta todos os módulos.
+# Nesta reestruturação, NÃO usamos motor.py.
 
-import time
-import os
-import json
-import pyaudio
-import re
 from flask import Flask, render_template
 from flask_socketio import SocketIO
-from vosk import Model, KaldiRecognizer
 
-from configuracoes import CONFIG
-from normalizador_texto import UtilTexto
+from seguranca import checagem_seguranca, Cores
+from registrador_eventos import RegistradorEventos
+from maquina_estados import MaquinaEstados
 from processador_roteiro import ProcessadorRoteiro
 from alinhador_roteiro import AlinhadorRoteiro
-from seguranca import Cores, checagem_seguranca
-from maquina_estados import MaquinaEstados
-from registrador_eventos import RegistradorEventos
+from controlador_rolagem import ControladorRolagem
+from reconhecedor_fala import ReconhecedorFala
+from motor_audio import MotorAudio
 
 
+# Cria a aplicação Flask.
 app = Flask(__name__)
-app.config['CHAVE_ACESSO'] = 'chave_squad29'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=60)
+
+# Chave usada pelo Flask/SocketIO.
+# Futuramente, deve ir para variável de ambiente.
+app.config["SECRET_KEY"] = "squad29_final_key"
+
+# Cria o servidor SocketIO.
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading",
+    ping_timeout=60
+)
+
+# Cria o objeto que guarda o estado do sistema.
+estado = MaquinaEstados()
+
+# Carrega e processa o roteiro.
+processador = ProcessadorRoteiro()
+
+(
+    estado.linhas_roteiro,
+    estado.linhas_exibidas,
+    estado.falar_para_exibir
+) = processador.carregar_roteiro()
+
+# Cria o alinhador entre linha falada e linha visual.
+alinhador = AlinhadorRoteiro(
+    estado.falar_para_exibir,
+    estado.linhas_exibidas
+)
+
+# Cria o controlador responsável pelas decisões de rolagem.
+controlador = ControladorRolagem(
+    estado,
+    alinhador,
+    socketio
+)
 
 
-# indica as princiapis funções do teleprompt, definindo a abertura do roteiro e que partes do roteiro
-# devem ser lidas ou mostradas
-class EstruturaTelePrompt(ProcessadorRoteiro, MaquinaEstados):
-    def __init__(self):
-        MaquinaEstados.__init__(self)
-        self.carregar_roteiro()
+def processar_audio_em_loop():
+    # Loop principal de áudio, Vosk e avaliação de rolagem.
+    RegistradorEventos.maquina_ativa(Cores)
 
-    def iniciar_maquina(self):
-        if self.proc_audio: return
-        self.correndo = True
-        self.proc_audio = socketio.start_background_task(self.processar_laco_audio)
+    reconhecedor = ReconhecedorFala()
 
-    def processar_laco_audio(self):
-        RegistradorEventos.maquina_ativa(Cores)
-        if not os.path.exists(CONFIG["caminho_modelo"]): return
+    # Inicia o Vosk.
+    if not reconhecedor.iniciar():
+        return
 
-        modelo      = Model(CONFIG["caminho_modelo"])
-        reconhecedor = KaldiRecognizer(modelo, 16000) # reconhece o que está sendo falado e transcreve o áudio
-        pa          = pyaudio.PyAudio()
+    motor_audio = MotorAudio()
 
-        try:
-            # o fluxo é onde o PyAudio é aberto para abrir o microfone e começar a receber o áudio
-            fluxo = pa.open(format=pyaudio.paInt16, channels=1, rate=16000,
-                            input=True, frames_per_buffer=4096)
-            fluxo.start_stream()
+    try:
+        # Abre microfone.
+        motor_audio.abrir_microfone()
 
-            # Descarta o primeiro chunk (microfone inicializando)
-            fluxo.read(4096, exception_on_overflow=False) # essa variavel vem do pyaudio então não é possivel alterar
-            reconhecedor.Reset()
+        # Reseta o reconhecedor.
+        reconhecedor.resetar()
 
-            RegistradorEventos.microfone_aberto()
+        RegistradorEventos.microfone_aberto()
 
-            while self.correndo:
-                socketio.sleep(0.001)
+        # Enquanto o sistema estiver rodando, fica ouvindo áudio.
+        while estado.correndo:
+            socketio.sleep(0.001)
 
-                # ── Flush pós-avanço ─────────────────────────────────────
-                # Após avançar uma linha descartamos o áudio que ainda estava
-                # no buffer do microfone para não reanalisar a mesma fala.
-                if self.descartar_buffer:
-                    self.descartar_buffer = False
-                    reconhecedor.Reset()
-                    continue
-                # ─────────────────────────────────────────────────────────
+            # Quando ocorre avanço, descartamos áudio residual.
+            if estado.descartar_buffer:
+                estado.descartar_buffer = False
+                reconhecedor.resetar()
+                continue
 
-                try:
-                    dados = fluxo.read(4096, exception_on_overflow=False)
+            try:
+                # Lê áudio do microfone.
+                dados_audio = motor_audio.ler_audio()
 
-                    if reconhecedor.AcceptWaveform(dados):
-                        # Resultado FINAL — frase completa
-                        final_resultado = json.loads(reconhecedor.Result())
-                        texto = final_resultado.get("text", "") 
-                        if texto and self.avaliar(texto, parcial=False):
-                            reconhecedor.Reset()
-                    else:
-                        # Resultado PARCIAL — Vosk ainda transcrevendo
-                        parcial_resultado = json.loads(reconhecedor.PartialResult())
-                        texto  = parcial_resultado.get("partial", "")
-                        if texto and self.avaliar(texto, parcial=True):
-                            reconhecedor.Reset()
+                # Processa áudio com Vosk.
+                tipo_resultado, texto = reconhecedor.processar_audio(dados_audio)
 
-                except Exception:
-                    continue
-        finally:
-            pa.terminate()
+                if texto:
+                    # Verifica se o resultado é parcial ou final.
+                    parcial = tipo_resultado == "PARCIAL"
 
-    def enviar(self, idx, tipo_evento, txt):
-        self.idx_atual     = idx
-        self.tempo_ultimo_avanco = time.time()
-        self.descartar_buffer     = True
-        self.ultimo_texto_parcial = ""
-        self.contagem_leitura_parcial = 0
-        self.recomecar_bloco_parcial = False
-        
-        alinhador = AlinhadorRoteiro(self.falar_para_exibir, self.linhas_exibidas)
-        mostrar_idx = alinhador.obter_indice_visual(idx)
+                    # Envia a transcrição para o controlador de rolagem.
+                    if controlador.avaliar(texto, parcial):
+                        reconhecedor.resetar()
 
-        socketio.emit('cmd', {'index': mostrar_idx, 'type': tipo_evento, 'text': txt})
-        RegistradorEventos.evento_rolagem(tipo_evento, idx, mostrar_idx)
-        
-    def avaliar(self, texto, parcial):
-        total_linhas = len(self.linhas_roteiro)
-        if self.idx_atual >= total_linhas:
-            return False
-        
-        linha_atual = self.linhas_roteiro[self.idx_atual]
+            except Exception:
+                # Mantido como no comportamento original.
+                # Depois será substituído por log estruturado.
+                continue
 
-        # Parciais podem avançar só se a leitura estiver fluindo normal
-        if parcial:
-            n_texto = UtilTexto.normaliza(texto)
-            n_linha_atual = UtilTexto.normaliza(linha_atual)
-
-            # Se o parcial encolheu, a pessoa travou/recomeçou
-            if len(n_texto) < len(self.ultimo_texto_parcial):
-                self.ultimo_texto_parcial = n_texto
-                self.contagem_leitura_parcial = 0
-                self.recomecar_bloco_parcial = True
-                RegistradorEventos.reconhecimento("PARCIAL-BASE", texto, self.idx_atual, linha_atual)
-                return False
-
-            self.ultimo_texto_parcial = n_texto
-
-            # Se houve recomeço, só zera uma vez e libera o fluxo seguir
-            if self.recomecar_bloco_parcial:
-                self.contagem_leitura_parcial = 0
-                self.recomecar_bloco_parcial = False
-
-            cobertura = len(n_texto) / max(len(n_linha_atual), 1)
-
-            if cobertura >= CONFIG["avanco_parcial"]:
-                if UtilTexto.verificar_correspondencia_normal(
-                    texto, linha_atual,
-                    CONFIG["limite_similaridade"],
-                    parcial=False
-                ):
-                    self.contagem_leitura_parcial += 1
-
-                    # Se estiver MUITO perto do fim da frase, 1 confirmação basta
-                    conf_necessarias = 1 if cobertura >= 0.95 else 2
-
-                    if self.contagem_leitura_parcial >= conf_necessarias:
-                        self.ultimo_texto_parcial = ""
-                        self.contagem_leitura_parcial = 0
-                        self.enviar(self.idx_atual + 1, 'next', linha_atual)
-                        return True
-                else:
-                    self.contagem_leitura_parcial = 0
-            else:
-                self.contagem_leitura_parcial = 0
-
-            RegistradorEventos.reconhecimento("PARCIAL", texto, self.idx_atual, linha_atual)
-            return False
-        
-        # ── Cooldown pós-avanço ──────────────────────────────────────────
-        # Bloqueia novos avanços pelos primeiros N segundos após o último.
-        # Impede cascata causada por áudio residual no buffer.
-        bloqueio = time.time() - self.tempo_ultimo_avanco
-        if bloqueio < CONFIG["intervalo_avanco"]:
-            return False
-        # ────────────────────────────────────────────────────────────────
-
-        
-        
-        # --- 1. REGRA DE OURO: Retorno à Linha 1 ---
-        if total_linhas > 0 and self.idx_atual > 2:
-            if UtilTexto.verificar_correspondencia_normal(
-                texto, self.linhas_roteiro[0],
-                CONFIG["limite_similaridade"],
-                parcial=parcial
-            ):
-                self.enviar(0, 'back', self.linhas_roteiro[0])
-                return True
-
-        # --- 2. LEITURA SEQUENCIAL (linha atual) ---
-        linha_atual = self.linhas_roteiro[self.idx_atual]
-        n_texto = UtilTexto.normaliza(texto)
-        n_linha_atual = UtilTexto.normaliza(linha_atual)
-
-        if UtilTexto.verificar_correspondencia_normal(
-            texto, linha_atual,
-            CONFIG["limite_similaridade"],
-            parcial=parcial
-        ):
-            
-
-            self.recomecar_bloco_parcial = False
-            self.enviar(self.idx_atual + 1, 'next', linha_atual)
-            return True
-
-        # --- 3. VARREDURA GLOBAL — SOMENTE resultados finais ---
-        # Partials nunca disparam saltos; evita pulos causados por
-        # transcrição incompleta que coincide com outra linha do roteiro.
-        #________________________________________
-        if len(texto) > CONFIG["caracteres_minimos"]:
-            
-            for i in range(total_linhas):
-                if i == self.idx_atual: continue
-                
-                # Usa verificar_dinamica_correspondencia que também tem recuperação de improviso
-                if UtilTexto.verificar_dinamica_correspondencia(texto, self.linhas_roteiro[i]):
-                    # direção indica se o salto deve ir para frente ou para trás
-                    direcao = 'jump' if i > self.idx_atual else 'back'
-                    self.enviar(i + 1, direcao, self.linhas_roteiro[i])
-                    return True
-        #________________________________________
-
-        linha_atual = self.linhas_roteiro[self.idx_atual]
-        tipo_log = "PARCIAL" if parcial else "FINAL"
-        RegistradorEventos.reconhecimento(tipo_log, texto, self.idx_atual, linha_atual)
-        return False
+    finally:
+        # Garante fechamento do microfone ao encerrar.
+        motor_audio.fechar_microfone()
 
 
-estrutura = EstruturaTelePrompt()
+def iniciar_sistema():
+    # Evita iniciar duas tarefas de áudio ao mesmo tempo.
+    if estado.proc_audio:
+        return
 
-@app.route('/')
+    estado.correndo = True
+
+    # Inicia o loop de áudio em segundo plano.
+    estado.proc_audio = socketio.start_background_task(processar_audio_em_loop)
+
+
+@app.route("/")
 def index():
-    return render_template('index.html', script=estrutura.linhas_exibidas)
+    # Envia o roteiro visual para a interface HTML.
+    return render_template(
+        "index.html",
+        script=estado.linhas_exibidas
+    )
 
-@socketio.on('connect')
-def gerenciar_conexao():
+
+@socketio.on("connect")
+def cliente_conectado():
+    # Executa quando a interface web conecta ao backend.
     RegistradorEventos.cliente_conectado()
-    alinhador = AlinhadorRoteiro(estrutura.falar_para_exibir, estrutura.linhas_exibidas)
-    first_idx = alinhador.obter_primeiro_indice_visual()
-    socketio.emit('cmd', {'index': first_idx, 'type': 'sync', 'text': ''})
-    estrutura.iniciar_maquina()
 
-if __name__ == '__main__':
+    primeiro_indice_visual = alinhador.obter_primeiro_indice_visual()
+
+    # Sincroniza a interface com a primeira linha.
+    socketio.emit(
+        "cmd",
+        {
+            "index": primeiro_indice_visual,
+            "type": "sync",
+            "text": ""
+        }
+    )
+
+    # Inicia áudio + Vosk + rolagem.
+    iniciar_sistema()
+
+
+if __name__ == "__main__":
+    # Segurança comentada nesta fase para facilitar os testes.
     # checagem_seguranca()
+
     RegistradorEventos.servidor("http://127.0.0.1:5500")
+
+    # Inicia servidor Flask/SocketIO.
     socketio.run(app, debug=True, port=5500)
