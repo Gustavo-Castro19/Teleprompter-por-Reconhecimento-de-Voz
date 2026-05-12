@@ -1,0 +1,1 @@
+# Decide se avança, pausa, volta, segura ou manda evento para frontend.

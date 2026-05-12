@@ -1,0 +1,1 @@
+# Cuida do PyAudio, microfone, stream e futuramente Dante/áudio IP.
