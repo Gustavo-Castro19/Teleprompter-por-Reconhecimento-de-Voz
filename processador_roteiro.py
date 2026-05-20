@@ -1,168 +1,371 @@
-# Processador_roteiro.py
-# Lê o JSON, limpa tags, remove comandos técnicos e gera linhas faláveis.
-# Nesta fase, mantemos a lógica atual, apenas organizada em arquivo próprio.
-# Correções como evitar duplicidade entre body e notesWithBody serão feitas depois.
+# processador_roteiro.py
+# ============================================================
+# RESPONSABILIDADE:
+# Processar o roteiro JSON vindo do NewsHub/iNEWS.
+#
+# REGRA IMPORTANTE DO TELEPROMPTER:
+# - comandos técnicos DEVEM aparecer na tela;
+# - comandos técnicos NÃO devem ser lidos;
+# - comandos técnicos serão marcados como "tecnico"
+#   para futuramente aparecerem com outra cor na interface.
+# ============================================================
 
-import os
 import json
 import re
 
 from configuracoes import CONFIG
 
+
 class ProcessadorRoteiro:
-    def carregar_roteiro(self):
-        # Inicializa as listas que serão retornadas.
+    def __init__(self):
         self.linhas_roteiro = []
         self.linhas_exibidas = []
         self.falar_para_exibir = []
+        self.tipos_linhas_exibidas = []
 
-        # Verifica se o arquivo do roteiro existe.
-        if os.path.exists(CONFIG["caminho_roteiro"]):
-            try:
-                with open(CONFIG["caminho_roteiro"], "r", encoding="utf-8") as f:
-                    data = json.load(f)
+    def garantir_texto(self, valor):
+        """
+        Garante que o valor recebido seja texto.
 
-                texto_roteiro = ""
-                texto_exibido = ""
-                idx_exibido = 0
-                self.falar_para_exibir = []
+        O JSON pode trazer:
+        - string
+        - lista de strings
+        - lista com outros tipos
+        - valor vazio
 
-                # O roteiro vem em uma lista de slugs/retrancas.
-                if "slugs" in data:
-                    for slug in data["slugs"]:
+        Essa função evita erro como:
+        AttributeError: 'list' object has no attribute 'replace'
+        """
 
-                        # Processa notesWithBody.
-                        if "notesWithBody" in slug:
-                            for nota in slug["notesWithBody"]:
-                                if "text" in nota:
-                                    for item_texto in nota["text"]:
-                                        resultado = self.processar_body(item_texto, idx_exibido)
+        if valor is None:
+            return ""
 
-                                        texto_roteiro += resultado["texto_roteiro"]
-                                        texto_exibido += resultado["texto_exibido"]
-                                        self.falar_para_exibir.extend(resultado["falar_para_exibir"])
-                                        idx_exibido = resultado["proximo_idx_exibido"]
+        if isinstance(valor, list):
+            return "\n".join(str(item) for item in valor)
 
-                        # Processa body.
-                        # OBS: ainda está igual ao comportamento atual.
-                        # Depois vamos impedir duplicidade entre body e notesWithBody.
-                        if "body" in slug:
-                            resultado = self.processar_body(slug["body"], idx_exibido)
+        return str(valor)
 
-                            texto_roteiro += resultado["texto_roteiro"]
-                            texto_exibido += resultado["texto_exibido"]
-                            self.falar_para_exibir.extend(resultado["falar_para_exibir"])
-                            idx_exibido = resultado["proximo_idx_exibido"]
+    def remover_tags_html_preservando_texto(self, texto):
+        if not texto:
+            return ""
 
-                # Linhas exibidas na interface.
-                self.linhas_exibidas = [
-                    l.strip()
-                    for l in texto_exibido.split("\n")
-                    if l.strip()
-                ]
+        texto = self.garantir_texto(texto)
 
-                # Linhas usadas para comparação com a fala.
-                self.linhas_roteiro = [
-                    l.strip()
-                    for l in texto_roteiro.split("\n")
-                    if l.strip()
-                ]
+        texto = texto.replace("\r\r\n", "\n").replace("\r", "\n")
+        texto = re.sub(r"<[^>]+>", "\n", texto)
 
-            except Exception as e:
-                self.linhas_roteiro = [f"ERRO: Falha ao carregar roteiro: {str(e)}"]
-                self.linhas_exibidas = []
-                self.falar_para_exibir = []
-        else:
-            self.linhas_roteiro = ["ERRO: Roteiro não encontrado"]
-            self.linhas_exibidas = []
-            self.falar_para_exibir = []
+        return texto
 
-        return self.linhas_roteiro, self.linhas_exibidas, self.falar_para_exibir
+    def remover_comandos_tecnicos_para_fala(self, texto):
+        """
+        Remove comandos técnicos SOMENTE para gerar texto falável.
+        O visual continua preservando esses comandos.
+        """
 
-    def processar_body(self, body_cru, idx_exibido):
-        # Normaliza quebras de linha.
-        body_cru = body_cru.replace("\r\r\n", "\n").replace("\r", "\n")
+        if not texto:
+            return ""
 
-        # Texto visual: remove tags HTML, mas mantém o texto interno.
-        body_exibido = re.sub(r"<[^>]+>", "\n", body_cru)
-        texto_exibido = body_exibido + "\n"
+        texto = self.garantir_texto(texto)
 
-        # Texto falado: remove o conteúdo das tags <pi> antes de remover outras tags.
-        body_roteiro = re.sub(r"<pi>.*?</pi>", " ", body_cru, flags=re.DOTALL)
-        body_roteiro = re.sub(r"<[^>]+>", "\n", body_roteiro)
+        texto = texto.replace("\r\r\n", "\n").replace("\r", "\n")
 
-        linhas_limpas = []
-        falar_para_exibir = []
+        # Remove blocos <pi>...</pi> do texto falável.
+        texto = re.sub(r"<pi>.*?</pi>", " ", texto, flags=re.DOTALL)
 
-        linhas_cruas_exibidas = body_exibido.split("\n")
-        linhas_cruas_roteiro = body_roteiro.split("\n")
+        # Remove tags HTML restantes.
+        texto = re.sub(r"<[^>]+>", "\n", texto)
 
-        for idx, linha in enumerate(linhas_cruas_exibidas):
+        # Remove comandos técnicos.
+        texto = re.sub(r"\{\{.*?\}\}", " ", texto)
+        texto = re.sub(r"\{.*?\}", " ", texto)
+        texto = re.sub(r"\[.*?\]", " ", texto)
+        texto = re.sub(r"\(.*?\)", " ", texto)
+
+        texto = texto.replace("/", " ")
+        texto = re.sub(r"=+", " ", texto)
+
+        return texto
+
+    def limpar_espacos(self, texto):
+        texto = re.sub(r"\s+", " ", texto or "")
+        return texto.strip()
+
+    def linha_eh_tecnica(self, linha):
+        """
+        Identifica comandos técnicos que aparecem no roteiro,
+        mas não devem ser lidos pelo apresentador.
+        """
+
+        if not linha:
+            return False
+
+        linha = linha.strip()
+
+        if linha.startswith("{{") and linha.endswith("}}"):
+            return True
+
+        if linha.startswith("{") and linha.endswith("}"):
+            return True
+
+        if linha.startswith("[") and linha.endswith("]"):
+            return True
+
+        if linha.startswith("(") and linha.endswith(")"):
+            return True
+
+        return False
+
+    def linha_eh_separador(self, linha):
+        if not linha:
+            return False
+
+        return bool(re.fullmatch(r"[=\-_/\\ ]+", linha.strip()))
+
+    def classificar_linha_visual(self, linha):
+        """
+        Classifica linha visual para uso futuro na interface.
+        """
+
+        if self.linha_eh_separador(linha):
+            return "separador"
+
+        if self.linha_eh_tecnica(linha):
+            return "tecnico"
+
+        return "fala"
+
+    def linha_parece_falavel(self, texto):
+        """
+        Define se a linha deve entrar no roteiro falado.
+        """
+
+        if not texto:
+            return False
+
+        texto = texto.strip()
+
+        if len(texto) < 2:
+            return False
+
+        if self.linha_eh_tecnica(texto):
+            return False
+
+        if self.linha_eh_separador(texto):
+            return False
+
+        if not re.search(r"[A-Za-zÀ-ÿ]", texto):
+            return False
+
+        return True
+
+    def linha_parece_continuacao(self, linha_anterior, linha_atual):
+        """
+        Junta linhas quebradas sem depender de frases específicas.
+        """
+
+        if not linha_anterior or not linha_atual:
+            return False
+
+        linha_anterior = linha_anterior.strip()
+        linha_atual = linha_atual.strip()
+
+        if linha_anterior.endswith((".", "!", "?", ":")):
+            return False
+
+        termina_com_conectivo = linha_anterior.lower().endswith((
+            " e",
+            " de",
+            " da",
+            " do",
+            " das",
+            " dos",
+            " para",
+            " com",
+            " ou",
+            " em",
+            " no",
+            " na",
+            " nos",
+            " nas",
+            " ao",
+            " à",
+        ))
+
+        comeca_minuscula = linha_atual[:1].islower()
+
+        return termina_com_conectivo or comeca_minuscula
+
+    def juntar_linhas_quebradas(self, linhas_faladas, mapeamento_original):
+        linhas_juntas = []
+        mapeamento_junto = []
+
+        buffer_texto = ""
+        buffer_visual = None
+
+        for indice, linha in enumerate(linhas_faladas):
             linha = linha.strip()
 
-            # Se a linha visual existe, ela recebe um índice visual.
-            if linha:
-                idx_atualmente_exibido = idx_exibido
-                idx_exibido += 1
+            if not linha:
+                continue
+
+            if not buffer_texto:
+                buffer_texto = linha
+                buffer_visual = mapeamento_original[indice]
+                continue
+
+            if self.linha_parece_continuacao(buffer_texto, linha):
+                buffer_texto += " " + linha
             else:
+                linhas_juntas.append(buffer_texto)
+                mapeamento_junto.append(buffer_visual)
+
+                buffer_texto = linha
+                buffer_visual = mapeamento_original[indice]
+
+        if buffer_texto:
+            linhas_juntas.append(buffer_texto)
+            mapeamento_junto.append(buffer_visual)
+
+        return linhas_juntas, mapeamento_junto
+
+    def processar_bloco_texto(self, texto_bruto, indice_visual_inicial):
+        """
+        Processa um bloco de texto do JSON.
+
+        Retorna:
+        - linhas visuais;
+        - tipos das linhas visuais;
+        - linhas faláveis;
+        - mapeamento fala -> visual.
+        """
+
+        texto_bruto = self.garantir_texto(texto_bruto)
+
+        linhas_exibidas = []
+        tipos_linhas_exibidas = []
+        linhas_roteiro = []
+        falar_para_exibir = []
+
+        texto_visual = self.remover_tags_html_preservando_texto(texto_bruto)
+        texto_falavel = self.remover_comandos_tecnicos_para_fala(texto_bruto)
+
+        linhas_visuais_brutas = texto_visual.split("\n")
+        linhas_falaveis_brutas = texto_falavel.split("\n")
+
+        indice_visual_atual = indice_visual_inicial
+
+        for indice_linha, linha_visual in enumerate(linhas_visuais_brutas):
+            linha_visual = self.limpar_espacos(linha_visual)
+
+            if not linha_visual:
                 continue
 
-            # Busca a linha correspondente no texto falado.
-            if idx < len(linhas_cruas_roteiro):
-                linha_roteiro = linhas_cruas_roteiro[idx].strip()
+            linhas_exibidas.append(linha_visual)
+            tipos_linhas_exibidas.append(
+                self.classificar_linha_visual(linha_visual)
+            )
+
+            indice_visual_da_linha = indice_visual_atual
+            indice_visual_atual += 1
+
+            if indice_linha < len(linhas_falaveis_brutas):
+                linha_falavel = self.limpar_espacos(
+                    linhas_falaveis_brutas[indice_linha]
+                )
             else:
-                linha_roteiro = ""
+                linha_falavel = ""
 
-            if not linha_roteiro:
-                continue
-
-            # Mantém o comportamento original:
-            # se a linha visual tinha <pi>, ela não entra como fala.
-            if idx < len(linhas_cruas_exibidas) and "<pi>" in linhas_cruas_exibidas[idx]:
-                continue
-
-            # Ignora comandos técnicos.
-            if linha_roteiro.startswith("{{") or linha_roteiro.startswith("{"):
-                continue
-
-            if linha_roteiro.startswith("{") and linha_roteiro.endswith("}"):
-                continue
-
-            # Ignora separadores visuais.
-            if re.fullmatch(r"=+", linha_roteiro):
-                continue
-
-            # Ignora linhas sem letras.
-            if not re.search(r"[A-Za-zÀ-ÿ]", linha_roteiro):
-                continue
-
-            linha_falada = linha_roteiro
-
-            # Remove comandos e marcações internas.
-            linha_falada = re.sub(r"\{\{.*?\}\}", " ", linha_falada)
-            linha_falada = re.sub(r"\{.*?\}", " ", linha_falada)
-            linha_falada = re.sub(r"\[.*?\]", " ", linha_falada)
-            linha_falada = re.sub(r"\(.*?\)", " ", linha_falada)
-
-            # Remove barras e sinais usados como marcação.
-            linha_falada = linha_falada.replace("/", " ")
-            linha_falada = re.sub(r"=+", " ", linha_falada)
-
-            # Normaliza espaços.
-            linha_falada = re.sub(r"\s+", " ", linha_falada).strip()
-
-            if not linha_falada:
-                continue
-
-            # Guarda o mapeamento entre linha falada e linha visual.
-            falar_para_exibir.append(idx_atualmente_exibido)
-
-            # Guarda a linha falável.
-            linhas_limpas.append(linha_falada)
+            if self.linha_parece_falavel(linha_falavel):
+                linhas_roteiro.append(linha_falavel)
+                falar_para_exibir.append(indice_visual_da_linha)
 
         return {
-            "texto_roteiro": "\n".join(linhas_limpas) + "\n",
-            "texto_exibido": texto_exibido,
+            "linhas_exibidas": linhas_exibidas,
+            "tipos_linhas_exibidas": tipos_linhas_exibidas,
+            "linhas_roteiro": linhas_roteiro,
             "falar_para_exibir": falar_para_exibir,
-            "proximo_idx_exibido": idx_exibido,
+            "proximo_indice_visual": indice_visual_atual,
         }
+
+    def carregar_roteiro(self):
+        self.linhas_roteiro = []
+        self.linhas_exibidas = []
+        self.falar_para_exibir = []
+        self.tipos_linhas_exibidas = []
+
+        with open(CONFIG["caminho_roteiro"], "r", encoding="utf-8") as arquivo:
+            dados = json.load(arquivo)
+
+        indice_visual = 0
+
+        for slug in dados.get("slugs", []):
+            tem_notes_with_body = (
+                "notesWithBody" in slug
+                and slug["notesWithBody"]
+            )
+
+            if tem_notes_with_body:
+                for nota in slug["notesWithBody"]:
+                    textos_nota = nota.get("text", [])
+
+                    if isinstance(textos_nota, list):
+                        itens_texto = textos_nota
+                    else:
+                        itens_texto = [textos_nota]
+
+                    for item_texto in itens_texto:
+                        resultado = self.processar_bloco_texto(
+                            item_texto,
+                            indice_visual
+                        )
+
+                        self.linhas_exibidas.extend(resultado["linhas_exibidas"])
+                        self.tipos_linhas_exibidas.extend(resultado["tipos_linhas_exibidas"])
+                        self.linhas_roteiro.extend(resultado["linhas_roteiro"])
+                        self.falar_para_exibir.extend(resultado["falar_para_exibir"])
+
+                        indice_visual = resultado["proximo_indice_visual"]
+
+            elif "body" in slug:
+                resultado = self.processar_bloco_texto(
+                    slug["body"],
+                    indice_visual
+                )
+
+                self.linhas_exibidas.extend(resultado["linhas_exibidas"])
+                self.tipos_linhas_exibidas.extend(resultado["tipos_linhas_exibidas"])
+                self.linhas_roteiro.extend(resultado["linhas_roteiro"])
+                self.falar_para_exibir.extend(resultado["falar_para_exibir"])
+
+                indice_visual = resultado["proximo_indice_visual"]
+
+        (
+            self.linhas_roteiro,
+            self.falar_para_exibir
+        ) = self.juntar_linhas_quebradas(
+            self.linhas_roteiro,
+            self.falar_para_exibir
+        )
+
+        print("\n========== DIAGNÓSTICO DO PARSER ==========")
+        print(f"Linhas exibidas : {len(self.linhas_exibidas)}")
+        print(f"Tipos visuais   : {len(self.tipos_linhas_exibidas)}")
+        print(f"Linhas faláveis : {len(self.linhas_roteiro)}")
+        print(f"Mapeamentos     : {len(self.falar_para_exibir)}")
+
+        print("\nPrimeiras linhas exibidas:")
+        for indice, linha in enumerate(self.linhas_exibidas[:10]):
+            tipo = self.tipos_linhas_exibidas[indice]
+            print(f"{indice + 1}. [{tipo}] {linha}")
+
+        print("\nPrimeiras linhas faláveis:")
+        for indice, linha in enumerate(self.linhas_roteiro[:10]):
+            print(f"{indice + 1}. {linha}")
+
+        print("===========================================\n")
+
+        return (
+            self.linhas_roteiro,
+            self.linhas_exibidas,
+            self.falar_para_exibir
+        )

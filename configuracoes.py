@@ -9,7 +9,7 @@ CONFIG = {
     
     # Caminho do roteiro/espelho do NewsHub
     # Atenção: esse arquivo precisa estar dentro da pasta "roteiros"
-    "caminho_roteiro": "roteiros/BDDF-07042026.txt",
+    "caminho_roteiro": "roteiros/roteiro_teste.json",
 
     # Similaridade mínima para leitura sequencial
     "limite_similaridade": 0.60, 

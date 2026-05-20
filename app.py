@@ -1,40 +1,46 @@
-# App.py
-# Arquivo principal do sistema.
-# Ele sobe Flask, SocketIO e conecta todos os módulos.
-# Nesta reestruturação, NÃO usamos motor.py.
+# app.py
+# ============================================================
+# TELEPROMPTER SQUAD 29
+# MODO BACKEND / TERMINAL
+# ============================================================
+#
+# OBJETIVO:
+# Nesta fase NÃO utilizaremos interface web.
+#
+# O foco é estabilizar:
+# - parser do roteiro;
+# - reconhecimento de voz;
+# - microfone;
+# - comparação;
+# - rolagem;
+# - estados internos.
+#
+# O frontend voltará apenas após estabilização do motor para integração.
+# ============================================================
 
-from flask import Flask, render_template
-from flask_socketio import SocketIO
-
-from seguranca import checagem_seguranca, Cores
-from registrador_eventos import RegistradorEventos
 from maquina_estados import MaquinaEstados
 from processador_roteiro import ProcessadorRoteiro
 from alinhador_roteiro import AlinhadorRoteiro
 from controlador_rolagem import ControladorRolagem
 from reconhecedor_fala import ReconhecedorFala
 from motor_audio import MotorAudio
+from registrador_eventos import RegistradorEventos
+from seguranca import Cores
 
 
-# Cria a aplicação Flask.
-app = Flask(__name__)
+# ============================================================
+# 1. ESTADO GLOBAL DO SISTEMA
+# ============================================================
 
-# Chave usada pelo Flask/SocketIO.
-# Futuramente, deve ir para variável de ambiente.
-app.config["SECRET_KEY"] = "squad29_final_key"
-
-# Cria o servidor SocketIO.
-socketio = SocketIO(
-    app,
-    cors_allowed_origins="*",
-    async_mode="threading",
-    ping_timeout=60
-)
-
-# Cria o objeto que guarda o estado do sistema.
 estado = MaquinaEstados()
 
-# Carrega e processa o roteiro.
+
+# ============================================================
+# 2. CARREGAMENTO DO ROTEIRO
+# ============================================================
+
+print("\nCarregando roteiro...")
+
 processador = ProcessadorRoteiro()
 
 (
@@ -43,122 +49,151 @@ processador = ProcessadorRoteiro()
     estado.falar_para_exibir
 ) = processador.carregar_roteiro()
 
-# Cria o alinhador entre linha falada e linha visual.
+print("Roteiro carregado com sucesso.\n")
+
+
+# ============================================================
+# 3. DIAGNÓSTICO INICIAL
+# ============================================================
+
+print("========== DIAGNÓSTICO ==========")
+
+print(f"Linhas faláveis : {len(estado.linhas_roteiro)}")
+print(f"Linhas visuais  : {len(estado.linhas_exibidas)}")
+print(f"Mapeamentos     : {len(estado.falar_para_exibir)}")
+
+print("\nPrimeiras linhas faláveis:\n")
+
+for indice, linha in enumerate(estado.linhas_roteiro[:10]):
+    print(f"{indice + 1}. {linha}")
+
+print("\n=================================\n")
+
+
+# ============================================================
+# 4. ALINHADOR
+# ============================================================
+
 alinhador = AlinhadorRoteiro(
     estado.falar_para_exibir,
     estado.linhas_exibidas
 )
 
-# Cria o controlador responsável pelas decisões de rolagem.
+
+# ============================================================
+# 5. SOCKETIO FALSO
+# ============================================================
+
+class SocketIOSimulado:
+    """
+    Simula apenas o emit necessário para o controlador.
+    """
+
+    def emit(self, evento, dados):
+        print("\n========== EVENTO ==========")
+        print(f"Evento: {evento}")
+        print(f"Tipo  : {dados.get('type')}")
+        print(f"Índice: {dados.get('index')}")
+        print(f"Texto : {dados.get('text')}")
+        print("============================\n")
+
+
+socketio_simulado = SocketIOSimulado()
+
+
+# ============================================================
+# 6. CONTROLADOR DE ROLAGEM
+# ============================================================
+
 controlador = ControladorRolagem(
     estado,
     alinhador,
-    socketio
+    socketio_simulado
 )
 
 
-def processar_audio_em_loop():
-    # Loop principal de áudio, Vosk e avaliação de rolagem.
-    RegistradorEventos.maquina_ativa(Cores)
+# ============================================================
+# 7. RECONHECEDOR DE FALA
+# ============================================================
 
-    reconhecedor = ReconhecedorFala()
+reconhecedor = ReconhecedorFala()
 
-    # Inicia o Vosk.
-    if not reconhecedor.iniciar():
-        return
+print("Inicializando reconhecedor...")
 
-    motor_audio = MotorAudio()
+if not reconhecedor.iniciar():
+    print("ERRO: não foi possível iniciar o Vosk.")
+    exit()
 
-    try:
-        # Abre microfone.
-        motor_audio.abrir_microfone()
-
-        # Reseta o reconhecedor.
-        reconhecedor.resetar()
-
-        RegistradorEventos.microfone_aberto()
-
-        # Enquanto o sistema estiver rodando, fica ouvindo áudio.
-        while estado.correndo:
-            socketio.sleep(0.001)
-
-            # Quando ocorre avanço, descartamos áudio residual.
-            if estado.descartar_buffer:
-                estado.descartar_buffer = False
-                reconhecedor.resetar()
-                continue
-
-            try:
-                # Lê áudio do microfone.
-                dados_audio = motor_audio.ler_audio()
-
-                # Processa áudio com Vosk.
-                tipo_resultado, texto = reconhecedor.processar_audio(dados_audio)
-
-                if texto:
-                    # Verifica se o resultado é parcial ou final.
-                    parcial = tipo_resultado == "PARCIAL"
-
-                    # Envia a transcrição para o controlador de rolagem.
-                    if controlador.avaliar(texto, parcial):
-                        reconhecedor.resetar()
-
-            except Exception:
-                # Mantido como no comportamento original.
-                # Depois será substituído por log estruturado.
-                continue
-
-    finally:
-        # Garante fechamento do microfone ao encerrar.
-        motor_audio.fechar_microfone()
+print("Reconhecedor iniciado com sucesso.\n")
 
 
-def iniciar_sistema():
-    # Evita iniciar duas tarefas de áudio ao mesmo tempo.
-    if estado.proc_audio:
-        return
+# ============================================================
+# 8. MOTOR DE ÁUDIO
+# ============================================================
 
-    estado.correndo = True
+motor_audio = MotorAudio()
 
-    # Inicia o loop de áudio em segundo plano.
-    estado.proc_audio = socketio.start_background_task(processar_audio_em_loop)
+try:
+    print("Abrindo microfone...\n")
 
+    motor_audio.abrir_microfone()
 
-@app.route("/")
-def index():
-    # Envia o roteiro visual para a interface HTML.
-    return render_template(
-        "index.html",
-        script=estado.linhas_exibidas
-    )
+    reconhecedor.resetar()
 
+    RegistradorEventos.microfone_aberto()
 
-@socketio.on("connect")
-def cliente_conectado():
-    # Executa quando a interface web conecta ao backend.
-    RegistradorEventos.cliente_conectado()
-
-    primeiro_indice_visual = alinhador.obter_primeiro_indice_visual()
-
-    # Sincroniza a interface com a primeira linha.
-    socketio.emit(
-        "cmd",
-        {
-            "index": primeiro_indice_visual,
-            "type": "sync",
-            "text": ""
-        }
-    )
-
-    # Inicia áudio + Vosk + rolagem.
-    iniciar_sistema()
+except Exception as erro:
+    print(f"ERRO ao abrir microfone: {erro}")
+    exit()
 
 
-if __name__ == "__main__":
-    # Segurança comentada nesta fase para facilitar os testes.
-    # checagem_seguranca()
+# ============================================================
+# 9. LOOP PRINCIPAL
+# ============================================================
 
-    RegistradorEventos.servidor("http://127.0.0.1:5500")
+print(f"{Cores.VERDE}--- ENGINE ONLINE ---{Cores.BASE}\n")
 
-    # Inicia servidor Flask/SocketIO.
-    socketio.run(app, debug=True, port=5500)
+estado.correndo = True
+
+try:
+    while estado.correndo:
+
+        # Descarta áudio residual após avanço.
+        if estado.descartar_buffer:
+            estado.descartar_buffer = False
+            reconhecedor.resetar()
+            continue
+
+        try:
+            # Captura áudio do microfone.
+            dados_audio = motor_audio.ler_audio()
+
+            # Processa áudio no Vosk.
+            tipo_resultado, texto = reconhecedor.processar_audio(
+                dados_audio
+            )
+
+            if texto:
+                parcial = tipo_resultado == "PARCIAL"
+
+                houve_rolagem = controlador.avaliar(
+                    texto,
+                    parcial
+                )
+
+                # Após avanço resetamos buffer.
+                if houve_rolagem:
+                    reconhecedor.resetar()
+
+        except Exception as erro_loop:
+            print(f"ERRO NO LOOP: {erro_loop}")
+
+except KeyboardInterrupt:
+    print("\nSistema interrompido pelo usuário.")
+
+finally:
+    estado.correndo = False
+    motor_audio.fechar_microfone()
+
+    print("\nMicrofone encerrado.")
+    print("Sistema finalizado.")
