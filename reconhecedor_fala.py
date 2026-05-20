@@ -1,3 +1,5 @@
+# Cuida do Vosk: parcial, final, reset e erros.
+
 # Reconhecedor_fala.py
 # Responsável por inicializar e usar o Vosk.
 # Ele recebe áudio bruto e devolve texto parcial ou final.
