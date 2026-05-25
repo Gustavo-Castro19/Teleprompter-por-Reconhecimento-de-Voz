@@ -34,6 +34,8 @@ class ControladorRolagem:
 
         self.ultimo_texto_final = ""
 
+        self.ultimo_parcial_processado = ""
+
     # ============================================================
     # MÉTRICAS
     # ============================================================
@@ -84,6 +86,67 @@ class ControladorRolagem:
             acertos /
             max(len(palavras_linha), 1)
         )
+    
+    def calcular_score_palavras_relevantes(
+        self,
+        texto_falado,
+        linha_roteiro
+    ):
+        """
+        Mede quantas palavras importantes do roteiro
+        apareceram na fala reconhecida.
+
+        Isso ajuda MUITO quando o Vosk erra palavras,
+        principalmente em frases curtas.
+        """
+
+        texto_falado = UtilTexto.normaliza(texto_falado)
+        linha_roteiro = UtilTexto.normaliza(linha_roteiro)
+
+        palavras_fracas = {
+            "a", "o", "e", "de", "do", "da", "dos", "das",
+            "em", "no", "na", "nos", "nas", "um", "uma",
+            "para", "pra", "com", "por", "que", "se",
+            "ao", "as", "os", "ou"
+        }
+
+        palavras_faladas = {
+            palavra
+            for palavra in texto_falado.split()
+            if palavra not in palavras_fracas
+        }
+
+        palavras_roteiro = {
+            palavra
+            for palavra in linha_roteiro.split()
+            if palavra not in palavras_fracas
+        }
+
+        if not palavras_roteiro:
+            return 0.0
+
+        acertos = 0
+
+        for palavra in palavras_roteiro:
+
+            # Palavra exata.
+            if palavra in palavras_faladas:
+                acertos += 1
+                continue
+
+            # Similaridade aproximada.
+            for palavra_falada in palavras_faladas:
+
+                similaridade = self.calcular_similaridade(
+                    palavra,
+                    palavra_falada
+                )
+
+                if similaridade >= 0.72:
+                    acertos += 1
+                    break
+
+        return acertos / len(palavras_roteiro)
 
     def existe_palavra_relevante_em_comum(
         self,
@@ -201,6 +264,8 @@ class ControladorRolagem:
 
         melhor_cobertura = 0.0
 
+        melhor_relevancia = 0.0
+
         for indice in self.obter_indices_candidatos_locais():
 
             linha = self.estado.linhas_roteiro[indice]
@@ -215,9 +280,15 @@ class ControladorRolagem:
                 linha
             )
 
+            relevancia = self.calcular_score_palavras_relevantes(
+                texto,
+                linha
+            )
+
             pontuacao = (
-                (similaridade * 0.60) +
-                (cobertura * 0.40)
+                (similaridade * 0.45) +
+                (cobertura * 0.30) +
+                (relevancia * 0.25)
             )
 
             if pontuacao > melhor_pontuacao:
@@ -230,11 +301,14 @@ class ControladorRolagem:
 
                 melhor_cobertura = cobertura
 
+                melhor_relevancia = relevancia
+
         return (
             melhor_indice,
             melhor_pontuacao,
             melhor_similaridade,
-            melhor_cobertura
+            melhor_cobertura,
+            melhor_relevancia
         )
 
     # ============================================================
@@ -249,7 +323,8 @@ class ControladorRolagem:
         melhor_indice,
         score,
         similaridade,
-        cobertura
+        cobertura,
+        relevancia
     ):
 
         print("\n======================================================")
@@ -299,6 +374,8 @@ class ControladorRolagem:
 
         print(f"Cobertura     : {cobertura:.2f}")
 
+        print(f"Relevância    : {relevancia:.2f}")
+
         print("======================================================\n")
 
     def mostrar_linha_atual_e_proxima(
@@ -343,13 +420,18 @@ class ControladorRolagem:
 
         total_linhas = len(self.estado.linhas_roteiro)
 
-        if indice_destino >= total_linhas:
-            indice_destino = total_linhas - 1
+        if indice_destino > total_linhas:
+            indice_destino = total_linhas
 
         if indice_destino < 0:
             indice_destino = 0
 
         self.estado.idx_atual = indice_destino
+
+        # Se o índice destino chegou ao total de linhas,
+        # significa que o roteiro foi concluído.
+        if self.estado.idx_atual >= total_linhas:
+            self.estado.mudar_estado("FINALIZADO")
 
         self.estado.tempo_ultimo_avanco = time.time()
 
@@ -360,6 +442,8 @@ class ControladorRolagem:
         self.estado.contagem_leitura_parcial = 0
 
         self.estado.recomecar_bloco_parcial = False
+
+        self.ultimo_parcial_processado = ""
 
         mostrar_idx = (
             self.alinhador_roteiro.obter_indice_visual(
@@ -413,6 +497,10 @@ class ControladorRolagem:
         texto,
         parcial
     ):
+        # Se o sistema não estiver em modo automático,
+        # o controlador não deve avaliar nem avançar o roteiro.
+        if not self.estado.esta_em_modo_automatico():
+            return False
 
         total_linhas = len(self.estado.linhas_roteiro)
 
@@ -458,7 +546,8 @@ class ControladorRolagem:
             melhor_indice,
             melhor_pontuacao,
             melhor_similaridade,
-            melhor_cobertura
+            melhor_cobertura,
+            melhor_relevancia
         ) = self.encontrar_melhor_linha_candidata(
             texto
         )
@@ -470,7 +559,8 @@ class ControladorRolagem:
             melhor_indice,
             melhor_pontuacao,
             melhor_similaridade,
-            melhor_cobertura
+            melhor_cobertura,
+            melhor_relevancia
         )
 
         if melhor_indice is None:
@@ -593,6 +683,14 @@ class ControladorRolagem:
             UtilTexto.normaliza(texto)
         )
 
+        if texto_normalizado == self.ultimo_parcial_processado:
+            return False
+
+        if len(texto_normalizado) <= len(self.ultimo_parcial_processado) + 2:
+            return False
+
+        self.ultimo_parcial_processado = texto_normalizado
+
         linha_normalizada = (
             UtilTexto.normaliza(linha_atual)
         )
@@ -636,9 +734,15 @@ class ControladorRolagem:
             linha_normalizada
         )
 
+        relevancia = self.calcular_score_palavras_relevantes(
+            texto_normalizado,
+            linha_normalizada
+        )
+
         pontuacao = (
-            (similaridade * 0.60) +
-            (cobertura * 0.40)
+            (similaridade * 0.45) +
+            (cobertura * 0.30) +
+            (relevancia * 0.25)
         )
 
         self.mostrar_diagnostico_completo(
@@ -648,7 +752,8 @@ class ControladorRolagem:
             self.estado.idx_atual,
             pontuacao,
             similaridade,
-            cobertura
+            cobertura,
+            relevancia
         )
 
         if pontuacao >= 0.72:

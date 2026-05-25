@@ -22,3 +22,16 @@ class EventoSistema:
     texto: str = ""
     indice_atual: int = 0
     observacao: str = ""
+
+@dataclass
+class SegmentoRoteiro:
+    # Representa uma linha ou bloco processado do roteiro.
+    texto_falado: str
+    texto_visual: str
+    tipo_linha: str = "fala"
+    indice_falado: int = 0
+    indice_visual: int = 0
+    tempo_estimado: Optional[float] = None
+    apresentador: Optional[str] = None
+    titulo: Optional[str] = None
+

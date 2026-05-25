@@ -6,6 +6,21 @@ class RegistradorEventos:
     @staticmethod
     def maquina_ativa(Cores):
         print(f"{Cores.VERDE}--- MáQUINA ATIVA ---{Cores.BASE}")
+    
+    @staticmethod
+    def mudanca_estado(estado_anterior, novo_estado):
+        # Registra no terminal quando o teleprompter muda de estado operacional.
+        print(f"[ESTADO] {estado_anterior} -> {novo_estado}")
+    
+    @staticmethod
+    def roteiro_finalizado():
+        # Registra quando o roteiro chega ao fim.
+        print("[SISTEMA] Roteiro finalizado. Encerrando motor.")
+    
+    @staticmethod
+    def falha_sistema(erro):
+        # Registra falhas graves do sistema.
+        print(f"[FALHA] Erro crítico no sistema: {erro}")
 
     @staticmethod
     def microfone_aberto():

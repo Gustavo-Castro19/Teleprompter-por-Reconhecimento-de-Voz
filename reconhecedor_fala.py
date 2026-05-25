@@ -20,33 +20,62 @@ class ReconhecedorFala:
         self.reconhecedor = None
 
     def iniciar(self):
-        # Verifica se o modelo Vosk existe.
-        if not os.path.exists(CONFIG["caminho_modelo"]):
+        # Pega o caminho da pasta do modelo Vosk definido nas configurações.
+        caminho_modelo = CONFIG["caminho_modelo"]
+
+        if not os.path.exists(caminho_modelo):
+            print(f"ERRO: modelo Vosk não encontrado em: {caminho_modelo}")
             return False
 
-        # Carrega o modelo Vosk.
-        self.modelo = Model(CONFIG["caminho_modelo"])
+        try:
+            # Mostra no terminal que o carregamento começou.
+            print(f"Carregando modelo Vosk em: {caminho_modelo}")
 
-        # Cria o reconhecedor para áudio de 16 kHz.
-        self.reconhecedor = KaldiRecognizer(self.modelo, 16000)
+            # Carrega o modelo Vosk para memória.
+            self.modelo = Model(caminho_modelo)
 
-        # Limpa qualquer estado anterior.
-        self.reconhecedor.Reset()
+            print("Modelo Vosk carregado com sucesso.")
 
-        return True
+            # Cria o reconhecedor de fala.
+            # O valor 16000 representa a taxa de amostragem do áudio.
+            self.reconhecedor = KaldiRecognizer(self.modelo, 16000)
+
+            # Limpa qualquer estado anterior do reconhecedor.
+            self.reconhecedor.Reset()
+
+            print("Reconhecedor Vosk iniciado com sucesso.")
+
+            return True
+
+        except Exception as erro:
+            # Caso aconteça qualquer erro ao carregar o modelo,
+            # mostramos a mensagem no terminal.
+            print(f"ERRO ao iniciar o Vosk: {erro}")
+            return False
 
     def processar_audio(self, dados_audio):
-        # Resultado final: o Vosk entendeu que a frase fechou.
-        if self.reconhecedor.AcceptWaveform(dados_audio):
-            resultado = json.loads(self.reconhecedor.Result())
-            texto = resultado.get("text", "")
-            return "FINAL", texto
+        # Se o reconhecedor ainda não foi iniciado, evita erro no sistema.
+        if not self.reconhecedor:
+            print("ERRO: reconhecedor Vosk não foi iniciado.")
+            return "ERRO", ""
 
-        # Resultado parcial: o Vosk ainda está formando a frase.
-        resultado = json.loads(self.reconhecedor.PartialResult())
-        texto = resultado.get("partial", "")
+        try:
+            # Resultado final: o Vosk entendeu que a frase fechou.
+            if self.reconhecedor.AcceptWaveform(dados_audio):
+                resultado = json.loads(self.reconhecedor.Result())
+                texto = resultado.get("text", "")
+                return "FINAL", texto
 
-        return "PARCIAL", texto
+            # Resultado parcial: o Vosk ainda está formando a frase.
+            resultado = json.loads(self.reconhecedor.PartialResult())
+            texto = resultado.get("partial", "")
+
+            return "PARCIAL", texto
+
+        except Exception as erro:
+            # Caso ocorra erro ao processar áudio, retorna vazio sem quebrar o motor.
+            print(f"ERRO ao processar áudio no Vosk: {erro}")
+            return "ERRO", ""
 
     def resetar(self):
         # Reseta o reconhecedor para evitar repetição de áudio antigo.

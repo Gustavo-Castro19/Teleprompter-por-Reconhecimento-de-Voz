@@ -1,0 +1,380 @@
+/* ==========================================================================
+   1. VARIÁVEIS E CONFIGURAÇÕES GERAIS (RESET)
+   ========================================================================== */
+:root {
+    --bg-panel: #3b4e61;
+    --bg-dark: #1b2836;
+    --bg-tp: #000000;
+    --accent-blue: #9bc5e2;
+    --winplus-blue: #0076ff;
+    --text-white: #ffffff;
+    --text-dark: #1b2836;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-white);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* Classe utilitária global */
+.hidden {
+    display: none !important;
+}
+
+
+/* ==========================================================================
+   2. ELEMENTOS COMPARTILHADOS
+   ========================================================================== */
+
+.arrow-indicator {
+    position: absolute;
+    left: 20px;
+    color: var(--winplus-blue);
+    font-size: 50px;
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* Área de texto do teleprompter */
+.text-content {
+    --tp-offset-y: 0px;
+    --tp-scale-x: 1;
+
+    width: 100%;
+    padding: 0 100px;
+    color: var(--text-white);
+    font-size: 72px;
+    line-height: 1.2;
+    outline: none;
+    transition: transform 0.25s ease;
+    transform: translateY(var(--tp-offset-y)) scaleX(var(--tp-scale-x));
+    transform-origin: center center;
+    will-change: transform;
+}
+
+/* Linha atualmente acompanhada pelo teleprompter */
+.linha-atual {
+    color: #00d9ff;
+    font-weight: bold;
+}
+
+/* Cada linha do roteiro */
+.linha-roteiro {
+    margin-bottom: 18px;
+}
+
+
+/* ==========================================================================
+   3. TELA DE COMANDO PRINCIPAL
+   ========================================================================== */
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    background: var(--bg-panel);
+    padding: 8px 15px;
+    gap: 12px;
+    height: 65px;
+}
+
+.logo-circle img {
+    width: 45px;
+    height: 45px;
+}
+
+.group img,
+.mini-group-horizontal img {
+    width: 20px;
+    height: 20px;
+}
+
+.group {
+    display: flex;
+    background: var(--accent-blue);
+    padding: 2px;
+    border-radius: 4px;
+    gap: 1px;
+}
+
+.group button,
+.group select {
+    border: none;
+    background: var(--accent-blue);
+    color: var(--text-dark);
+    font-weight: bold;
+    padding: 6px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.group button:hover,
+.group select:hover {
+    filter: brightness(0.95);
+}
+
+.group select {
+    background: #ffffff;
+    margin: 0 2px;
+    border-radius: 2px;
+}
+
+.active-format {
+    background: #1b2836 !important;
+    color: #ffffff !important;
+}
+
+.btn-invert.active,
+.btn-invert-mini.active {
+    background: #7a1a1a !important;
+    color: var(--text-white) !important;
+}
+
+.main-layout {
+    display: flex;
+    height: calc(100vh - 65px);
+    padding: 15px;
+    gap: 15px;
+}
+
+.main-layout .tp-area {
+    flex: 1;
+    background: var(--bg-tp);
+    border: 5px solid #222222;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+}
+
+
+/* ==========================================================================
+   4. PAINEL DE CONTROLE DE VELOCIDADE / ROLAGEM
+   ========================================================================== */
+
+.side-panel {
+    width: 80px;
+    background: var(--accent-blue);
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+}
+
+.nav-btn {
+    background: var(--text-dark);
+    color: var(--text-white);
+    border: none;
+    font-size: 10px;
+    font-weight: bold;
+    width: 90%;
+    padding: 5px 0;
+    margin-bottom: 5px;
+    cursor: pointer;
+}
+
+.nav-btn:hover {
+    background: #000000;
+}
+
+.wheel-container {
+    flex: 1;
+    width: 42px;
+    background: var(--text-dark);
+    border-radius: 20px;
+    position: relative;
+    margin: 10px 0;
+    display: flex;
+    justify-content: center;
+}
+
+.wheel-slider {
+    appearance: none;
+    -webkit-appearance: slider-vertical;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    writing-mode: bt-lr;
+    z-index: 2;
+}
+
+.wheel-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 4px solid #333333;
+    cursor: pointer;
+}
+
+.ticks {
+    position: absolute;
+    height: 90%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    pointer-events: none;
+    padding: 10% 0;
+    z-index: 1;
+}
+
+.ticks span {
+    width: 16px;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.2);
+    align-self: center;
+}
+
+
+/* ==========================================================================
+   5. TELA DE SAÍDA DO TELEPROMPTER FULLSCREEN
+   ========================================================================== */
+
+.tp-viewport-fullscreen {
+    width: 100vw;
+    height: 100vh;
+    background-color: var(--bg-tp);
+    display: flex;
+    align-items: center;
+    position: absolute;
+    overflow: hidden;
+    top: 0;
+    left: 0;
+    z-index: 1;
+}
+
+.tp-top-toolbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 60px;
+    background: var(--bg-panel);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-bottom: 2px solid var(--accent-blue);
+}
+
+.toolbar-hidden {
+    transform: translateY(-100%);
+}
+
+.toolbar-content-horizontal {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 15px;
+    height: 100%;
+}
+
+.mini-group-horizontal {
+    display: flex;
+    flex-direction: row;
+    background: var(--accent-blue);
+    padding: 3px;
+    border-radius: 4px;
+    gap: 4px;
+}
+
+.mini-group-horizontal button {
+    border: none;
+    background: #ffffff;
+    color: var(--text-dark);
+    padding: 6px 14px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mini-group-horizontal button:hover {
+    background: #e6e6e6;
+}
+
+.size-indicator-box {
+    padding: 0 12px;
+    background: var(--text-dark);
+    color: var(--text-white);
+    font-size: 13px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    border-radius: 2px;
+}
+
+.btn-invert-mini,
+.btn-invert {
+    margin-left: auto;
+    background: #000000 !important;
+    color: var(--accent-blue) !important;
+    border: 1px solid #444444 !important;
+    padding: 6px 15px !important;
+    font-size: 11px !important;
+    font-weight: bold;
+    border-radius: 4px !important;
+    cursor: pointer;
+}
+
+.btn-x-close {
+    position: absolute;
+    right: 20px;
+    background: #7a1a1a !important;
+    color: var(--text-white) !important;
+    border-radius: 50% !important;
+    border: none;
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+.btn-x-close:hover {
+    background: #a32424 !important;
+}
+
+.restore-arrow {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--winplus-blue);
+    color: var(--text-white);
+    border: none;
+    padding: 5px 25px;
+    border-radius: 0 0 10px 10px;
+    cursor: pointer;
+    z-index: 1001;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.tp-side-speed {
+    position: fixed;
+    right: 25px;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 65vh;
+    z-index: 10;
+}

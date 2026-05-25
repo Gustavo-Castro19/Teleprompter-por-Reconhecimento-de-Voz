@@ -1,58 +1,60 @@
-# Senha, variáveis de ambiente, proteção de dados e futuras regras de acesso.
 
-import hashlib
-import getpass
-import sys
-import time
+# seguranca.py
+# ============================================================
+# RESPONSABILIDADE:
+# Centralizar funções relacionadas à segurança do sistema.
+#
+# Nesta fase:
+# - não usamos senha fixa no código;
+# - não armazenamos autores ou dados sensíveis;
+# - deixamos a base preparada para variáveis de ambiente;
+# - futuramente este arquivo pode validar políticas do cliente.
+# ============================================================
+
 import os
 
 
-# --- 🔒 TRAVA DE SEGURANÇA ---
-__AUTOR__ = "Diego Marcelo & Ana Luísa - SQUAD 29"
-# -----------------------------
-
-
 class Cores:
-    BASE = "\033[0m" # Valor padrão de textos do teleprompt
+    # Cores usadas apenas para melhorar a leitura no terminal.
+    BASE = "\033[0m"
     NEGRITO = "\033[1m"
     VERDE = "\033[92m"
     VERMELHO = "\033[91m"
     CIANO = "\033[96m"
-    BG_CIANO = "\033[46m" # Valor de cor de fundo na cor ciano
+    BG_CIANO = "\033[46m"
     PRETO = "\033[30m"
 
 
-def checagem_seguranca():
-    os.system('cls' if os.name == 'nt' else 'clear')
-    try:
-        if globals().get("__AUTOR__") != "Diego Marcelo & Ana Luísa - SQUAD 29":
-            raise ValueError("Falha na verificação de integridade")
-    except:
-        print("Erro de integridade.")
-        sys.exit(1)
+def obter_variavel_ambiente(nome, valor_padrao=None):
+    # Busca uma variável de ambiente.
+    # Se ela não existir, retorna o valor padrão.
+    return os.getenv(nome, valor_padrao)
 
-    print("\n" + "="*60)
-    print(f"{Cores.BG_CIANO}{Cores.PRETO}{Cores.NEGRITO}  Mecanismo de transmissão de teleprompter - SQUAD 29  {Cores.BASE}")
-    print(f"{Cores.CIANO}  Devs: {__AUTOR__} {Cores.BASE}")
-    print("="*60 + "\n")
-    
-    # Hash é um algoritmo matemático que transforma data em uma sequência única de caracteres de comprimento fixo, seria um cpf para o dado
-    # o Hash abaixo se trata da senha que está sendo usada para poder usar o nosso sistema.
-    HASH_CORRETO = "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92"
 
-    tentativas = 3
-    while tentativas > 0:
-        try:
-            senha = getpass.getpass(f"Senha de Acesso ({tentativas}x): ")
-        except:
-            senha = input(f"Senha de Acesso ({tentativas}x): ")
-            
-        if hashlib.sha256(senha.encode()).hexdigest() == HASH_CORRETO:
-            print(f"\n{Cores.VERDE}✔ Sistema Armado.{Cores.BASE}\n")
-            time.sleep(1)
-            return
-        else:
-            print(f"{Cores.VERMELHO}Senha incorreta.{Cores.BASE}")
-            tentativas -= 1
+def modo_seguro_ativo():
+    # Verifica se o modo seguro está ativo.
+    # Por padrão, consideramos ativo.
+    valor = os.getenv("MODO_SEGURO", "true")
 
-    sys.exit(1)
+    return valor.lower() in ["true", "1", "sim", "yes"]
+
+
+def validar_politica_basica():
+    # Validação inicial de segurança.
+    # Nesta fase, apenas confirma que o sistema não depende de senha fixa.
+    if not modo_seguro_ativo():
+        print("[SEGURANÇA] Aviso: modo seguro está desativado.")
+
+    return True
+
+
+def ocultar_texto_sensivel(texto, limite=20):
+    # Reduz exposição de texto sensível em logs.
+    if not texto:
+        return ""
+
+    if len(texto) <= limite:
+        return texto
+
+    return texto[:limite] + "..."
+
