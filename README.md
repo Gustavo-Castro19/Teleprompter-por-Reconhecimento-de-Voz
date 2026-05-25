@@ -58,7 +58,7 @@ Ainda estão em teste ou refinamento:
 - Vosk
 - PyAudio
 - Flask
-- Flask-SocketIO
+- SocketIO
 - Eventlet
 - HTML
 - CSS
