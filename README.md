@@ -25,16 +25,34 @@ Atualmente, a equipe já desenvolveu a base principal do sistema, incluindo:
 - comparação entre fala reconhecida e roteiro;
 - desenvolvimento da interface visual em HTML, CSS e JavaScript.
 
-Ainda estão em desenvolvimento ou em fase de integração:
+A integração inicial entre backend e interface web também foi implementada. O sistema deixou de funcionar apenas em modo terminal e passou a executar como um servidor **Flask + SocketIO**, permitindo a comunicação entre o motor de rolagem e as telas no navegador.
 
-- controle final de avanço da rolagem;
-- controle de estados internos do sistema;
-- integração entre backend/API e interface web;
-- testes mais completos em diferentes computadores e cenários de uso.
+Também já foram implementados:
 
-A interface visual do MVP já foi desenvolvida em *HTML, CSS e JavaScript*. No estágio atual, a principal pendência técnica é a integração entre essa interface e o backend/API responsável pelo processamento do roteiro, reconhecimento de fala e controle da rolagem automática.
+- servidor Flask iniciando em `http://127.0.0.1:5500`;
+- rotas `/comando` e `/tp`;
+- envio do roteiro do backend para o navegador;
+- envio de comandos de rolagem via SocketIO;
+- eventos `roteiro`, `cmd` e `status_motor`;
+- renderização das linhas do roteiro no navegador;
+- destaque da linha atual;
+- rolagem visual com `transform`;
+- controles manuais de avançar, voltar e pausar/retomar;
+- controle por teclado com setas e espaço;
+- ajustes visuais de fonte, tamanho, negrito, itálico, sublinhado e inversão de tela;
+- ajuste manual de rolagem pelo slider;
+- opção de abrir e salvar roteiro localmente.
 
-# 2. Tecnologias utilizadas
+Ainda estão em teste ou refinamento:
+
+- validação completa da integração entre áudio, backend e interface;
+- testes em diferentes computadores;
+- ajustes finos da rolagem automática;
+- validação do comportamento em cenários com ruído e improviso.
+
+**Status atual:** integração inicial concluída e em fase de testes.
+
+## 2. Tecnologias utilizadas
 
 - Python 3.13.x
 - Vosk
@@ -83,16 +101,56 @@ projeto/
 ├── model/
 │   └── modelo Vosk em português
 ├── static/
+│   ├── css/
+│   │   └── style.css
+│   ├── imgs/
+│   │   ├── logo.png
+│   │   └── comandos/
+│   └── js/
+│       └── script.js
 ├── templates/
+│   ├── comando.html
+│   └── tp.html
 ├── requirements.txt
 └── README.md
 ```
+
+### Interface web
+
+A interface web do teleprompter foi integrada inicialmente ao backend em **Flask + SocketIO**. O sistema possui duas telas principais:
+
+- `/comando`: tela de controle, com botões e ajustes manuais;
+- `/tp`: tela cheia do teleprompter, usada para exibição do roteiro.
+
+A comunicação entre backend e frontend ocorre por eventos SocketIO. O backend envia o roteiro e os comandos de rolagem para o navegador, enquanto a interface renderiza as linhas, destaca a linha atual e aplica os comandos visuais.
+
+Eventos utilizados:
+
+- `roteiro`: envia as linhas do roteiro para a interface;
+- `cmd`: envia comandos de rolagem e atualização da linha atual;
+- `status_motor`: informa o estado do motor de execução.
+
+Funcionalidades da interface:
+
+- renderização das linhas do roteiro;
+- destaque da linha atual;
+- avanço e retorno manual;
+- pausar e retomar;
+- controle por teclado com setas e espaço;
+- troca de fonte;
+- alteração do tamanho da fonte;
+- negrito, itálico e sublinhado;
+- inversão de tela;
+- ajuste manual de rolagem pelo slider;
+- abertura e salvamento de roteiro localmente.
+
+**Status:** integração inicial concluída e em fase de testes.
 
 ### Função dos principais arquivos
 
 | Arquivo | Função |
 |---|---|
-| `app.py` | Arquivo principal do sistema. Inicializa o roteiro, o reconhecedor de fala, o microfone e o loop principal de execução. |
+| `app.py` | Arquivo principal do sistema. Inicializa o servidor Flask + SocketIO, carrega o roteiro, inicia o reconhecedor de fala, abre o microfone e envia comandos para a interface. |
 | `processador_roteiro.py` | Processa o roteiro em JSON, separando o texto exibido no teleprompter do texto falado pelo apresentador. |
 | `reconhecedor_fala.py` | Inicializa e utiliza o Vosk para transformar áudio em texto parcial ou final. |
 | `motor_audio.py` | Abre, lê e fecha o microfone utilizando PyAudio. |
@@ -104,6 +162,10 @@ projeto/
 | `registrador_eventos.py` | Centraliza mensagens e eventos exibidos no terminal. |
 | `seguranca.py` | Centraliza funções iniciais relacionadas à segurança e ocultação de dados sensíveis. |
 | `modelos.py` | Define estruturas de dados que podem apoiar comparações, eventos e segmentos do roteiro. |
+| `templates/comando.html` | Tela de controle do teleprompter, com botões manuais e opções de ajuste da interface. |
+| `templates/tp.html` | Tela cheia do teleprompter, usada para exibir o roteiro ao apresentador. |
+| `static/js/script.js` | Controla a comunicação da interface com o backend via SocketIO, renderização do roteiro, comandos manuais e ajustes visuais. |
+| `static/css/style.css` | Define a aparência visual da interface do teleprompter, incluindo layout, fontes, destaque e tela cheia. |
 
 
 ## 4. Passo a passo de instalação e execução
@@ -395,21 +457,31 @@ O sistema irá:
 6. comparar a fala reconhecida com as linhas do roteiro;
 7. avançar a rolagem conforme a leitura.
 
-Nesta versão, a execução principal ainda ocorre pelo terminal. A interface web já foi desenvolvida em **HTML, CSS e JavaScript**, mas a integração completa com o backend/API ainda está em andamento.
+Nesta versão, o sistema executa um servidor **Flask + SocketIO**, integrando o backend com a interface web. O terminal continua exibindo logs do motor, reconhecimento de fala e eventos do sistema, enquanto o navegador exibe as telas do teleprompter.
 
 ---
 
 ## 4.9 Acessando a interface
 
-Quando a integração com a interface estiver ativa, acesse no navegador:
+Após executar o sistema com:
 
-```text
-http://127.0.0.1:5500
+```bash
+python app.py
 ```
 
-Ou utilize o endereço informado no terminal ao executar o sistema.
+acesse as telas pelo navegador:
 
-> Observação: caso a execução atual esteja apenas no terminal, essa parte deve ser atualizada após a integração final da interface com o backend/API.
+```text
+http://127.0.0.1:5500/comando
+```
+
+```text
+http://127.0.0.1:5500/tp
+```
+
+A tela `/comando` é usada para controle do teleprompter, permitindo avançar, voltar, pausar/retomar e ajustar a visualização.
+
+A tela `/tp` é a visualização em tela cheia do teleprompter, usada para acompanhar o roteiro durante a leitura.
 
 ---
 
@@ -418,12 +490,14 @@ Ou utilize o endereço informado no terminal ao executar o sistema.
 Após iniciar o sistema:
 
 1. verifique se o microfone está conectado;
-2. confirme se o roteiro foi carregado corretamente;
-3. inicie a leitura do roteiro em voz alta;
-4. acompanhe no terminal os textos reconhecidos pelo Vosk;
-5. observe o avanço da rolagem conforme a leitura.
+2. acesse a tela de controle em `http://127.0.0.1:5500/comando`;
+3. acesse a tela cheia em `http://127.0.0.1:5500/tp`;
+4. confirme se o roteiro foi carregado corretamente;
+5. utilize os botões de avançar, voltar e pausar/retomar, se necessário;
+6. inicie a leitura do roteiro em voz alta;
+7. acompanhe no terminal os textos reconhecidos pelo Vosk e os eventos enviados pelo SocketIO.
 
-O sistema utiliza reconhecimento de fala para identificar o trecho lido pelo apresentador e sincronizar o avanço do teleprompter.
+O sistema utiliza reconhecimento de fala para identificar o trecho lido pelo apresentador e sincronizar o avanço do teleprompter na interface.
 
 ---
 
@@ -553,8 +627,8 @@ Projeto desenvolvido pela **Squad 29**.
 
 | Integrante | Responsabilidade |
 |---|---|
-| [Nome] | Backend / reconhecimento de fala |
-| [Nome] | Interface HTML/CSS/JavaScript |
-| [Nome] | Interface HTML/CSS/JavaScript |
-| [Nome] | Documentação |
-| [Nome] | Testes e validação |
+| [Nome] | [INSERIR RESPONSABILIDADE] |
+| [Nome] | [INSERIR RESPONSABILIDADE] |
+| [Nome] | [INSERIR RESPONSABILIDADE] |
+| [Nome] | [INSERIR RESPONSABILIDADE] |
+| [Nome] | [INSERIR RESPONSABILIDADE] |
