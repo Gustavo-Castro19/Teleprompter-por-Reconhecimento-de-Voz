@@ -1,4 +1,3 @@
-
 # Modelos.py
 # Guarda estruturas de dados que serão usadas nas próximas melhorias.
 # Nesta fase, ainda usamos listas simples, mas já deixamos a base preparada.

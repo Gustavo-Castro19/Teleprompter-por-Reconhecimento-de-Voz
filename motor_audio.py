@@ -1,4 +1,3 @@
-
 # Motor_audio.py
 # Responsável por abrir, ler e fechar o microfone com PyAudio.
 # Separar isso facilita futuras melhorias, como áudio Dante/AoIP.

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Tela Cheia</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="/static/imgs/logo.png">
+</head>
+
+<body id="app-body" class="mode-fullscreen">
+
+    <button id="btn-restore" class="restore-arrow hidden" title="Restaurar Comandos">▼</button>
+
+    <header id="top-toolbar" class="tp-top-toolbar">
+        <div class="toolbar-content-horizontal">
+            <div class="mini-group-horizontal">
+                <button id="btn-prev-local" title="Voltar">
+                    <img src="/static/imgs/comandos/retrocesso.png" alt="Voltar">
+                </button>
+
+                <button id="btn-play-local" title="Play/Pause">
+                    <img src="/static/imgs/comandos/pausa.png" alt="Play/Pause">
+                </button>
+
+                <button id="btn-next-local" title="Avançar">
+                    <img src="/static/imgs/comandos/avancar.png" alt="Avançar">
+                </button>
+            </div>
+
+            <button class="btn-invert-mini" id="mirrorBtnLocal">
+                INVERTER TELA
+            </button>
+
+            <a href="/comando">
+                <button class="btn-invert-mini" title="Alternar Modo de Tela">
+                    TELA DE CONTROLES
+                </button>
+            </a>
+        </div>
+
+        <button id="btn-close-toolbar" class="btn-x-close">✕</button>
+    </header>
+
+    <main class="tp-viewport-fullscreen">
+        <div class="arrow-indicator">▶</div>
+
+        <div id="display" class="text-content">
+            Carregando roteiro...
+        </div>
+    </main>
+
+    <aside id="side-speed-panel" class="side-panel tp-side-speed">
+        <div class="wheel-container">
+            <div class="ticks">
+                <span></span><span></span><span></span>
+                <span></span><span></span><span></span>
+            </div>
+
+            <input
+                type="range"
+                class="wheel-slider"
+                min="-10"
+                max="10"
+                value="0"
+                id="speedWheel"
+                title="Ajuste manual de rolagem"
+            >
+        </div>
+    </aside>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/static/js/script.js"></script>
+</body>
+</html>

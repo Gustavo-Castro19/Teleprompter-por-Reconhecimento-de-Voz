@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Tela de Controles</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="/static/imgs/logo.png">
+</head>
+
+<body id="app-body" class="mode-command">
+
+    <button id="btn-restore" class="restore-arrow hidden" title="Restaurar Comandos">▼</button>
+
+    <header id="main-toolbar" class="toolbar">
+        <div class="logo-circle">
+            <img src="/static/imgs/logo.png" alt="Logo">
+        </div>
+
+        <div class="group">
+            <button id="btn-open-file" title="Abrir">
+                <img src="/static/imgs/comandos/abrir.png" alt="Abrir">
+            </button>
+
+            <button id="btn-save-file" title="Salvar">
+                <img src="/static/imgs/comandos/salvar.png" alt="Salvar">
+            </button>
+
+            <input type="file" id="file-input" accept=".txt,.json" class="hidden">
+        </div>
+
+        <div class="group advanced-controls">
+            <button id="btn-undo" title="Desfazer">
+                <img src="/static/imgs/comandos/desfazer_2.png" alt="Desfazer">
+            </button>
+
+            <button id="btn-redo" title="Refazer">
+                <img src="/static/imgs/comandos/desfazer_3.png" alt="Refazer">
+            </button>
+
+            <select id="fontName" title="Fonte">
+                <option value="Arial">Arial</option>
+                <option value="Segoe UI" selected>Segoe UI</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Courier New">Courier New</option>
+            </select>
+
+            <select id="fontSize" title="Tamanho da fonte">
+                <option value="40">40</option>
+                <option value="56">56</option>
+                <option value="72" selected>72</option>
+                <option value="88">88</option>
+                <option value="100">100</option>
+                <option value="120">120</option>
+            </select>
+
+            <button id="btn-bold" title="Negrito">B</button>
+            <button id="btn-italic" title="Itálico">I</button>
+            <button id="btn-underline" title="Sublinhado">U</button>
+        </div>
+
+        <button class="btn-invert" id="mirrorBtn">INVERTER TELA</button>
+
+        <a href="/tp">
+            <button class="btn-invert-mini" title="Alternar Modo de Tela">
+                TELA CHEIA
+            </button>
+        </a>
+
+        <button id="btn-close-toolbar" class="btn-x-close hidden">✕</button>
+    </header>
+
+    <main class="main-layout">
+        <div id="tp-viewport" class="tp-area">
+            <div class="arrow-indicator">▶</div>
+
+            <div id="editor" class="text-content" contenteditable="true">
+                Carregando roteiro...
+            </div>
+        </div>
+
+        <aside id="side-speed-panel" class="side-panel">
+            <button class="nav-btn" id="btn-prev">◀ PREV</button>
+            <button class="nav-btn" id="btn-next">NEXT ▶</button>
+
+            <div class="wheel-container">
+                <div class="ticks">
+                    <span></span><span></span><span></span>
+                    <span></span><span></span><span></span>
+                    <span></span><span></span><span></span>
+                </div>
+
+                <input
+                    type="range"
+                    class="wheel-slider"
+                    min="-10"
+                    max="10"
+                    value="0"
+                    id="speedWheel"
+                    title="Ajuste manual de rolagem"
+                >
+            </div>
+        </aside>
+    </main>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="/static/js/script.js"></script>
+</body>
+</html>
