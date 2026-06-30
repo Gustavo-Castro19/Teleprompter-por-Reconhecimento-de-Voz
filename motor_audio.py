@@ -40,14 +40,14 @@ class MotorAudio:
                 channels=1,
                 rate=16000,
                 input=True,
-                frames_per_buffer=4096
+                frames_per_buffer=2048
             )
 
             # Inicia o fluxo de áudio.
             self.stream.start_stream()
 
             # Descarta o primeiro buffer para estabilizar a entrada de áudio.
-            self.stream.read(4096, exception_on_overflow=False)
+            return self.stream.read(2048, exception_on_overflow=False)
 
             print("Microfone aberto com sucesso.")
 

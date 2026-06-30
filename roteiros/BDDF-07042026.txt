@@ -275,7 +275,7 @@
                         "<p>BOM DIA DF</p>\r\r",
                         "<p>BOM DIA PRO NOSSO VIZINHO, ENTORNO./ </p>\r\r",
                         "<p><pi>==========</pi></p>\r\r",
-                        "<p>AGORA, SEIS HORAS E XX MINUTOS./</p>\r\r",
+                        "<p>AGORA, SEIS HORAS E xx MINUTOS./</p>\r\r",
                         "<p><pi>==========</pi></p>\r\r",
                         "<p>A TERÇA-FEIRA COMEÇA COM CÉU PARCIALMENTE NUBLADO E DEVE TER CHUVA AO LONGO DO DIA./</p>\r\r",
                         "<p>ISSO DE ACORDO COM O CLIMATEMPO./ INMET DESCARTA./ </p>\r\r",

@@ -26,74 +26,143 @@ body {
     width: 100vw;
 }
 
-/* Classe utilitária global */
 .hidden {
     display: none !important;
 }
 
-
 /* ==========================================================================
-   2. ELEMENTOS COMPARTILHADOS
+   2. ELEMENTOS COMPARTILHADOS E TEXTO
    ========================================================================== */
-
 .arrow-indicator {
     position: absolute;
-    left: 20px;
+    left: 26px;
+    top: 50%;
+    transform: translateY(-50%);
     color: var(--winplus-blue);
-    font-size: 50px;
+    font-size: 34px;
     z-index: 10;
     pointer-events: none;
+    opacity: 0.75;
+    line-height: 1;
+    filter: none;
 }
 
-/* Área de texto do teleprompter */
+/* Quando estiver em modo dividido, a seta da tela principal fica menor */
+.winplus-active .main-editor-panel .arrow-indicator {
+    left: 28px;
+    font-size: 40px;
+    opacity: 0.9;
+    filter: none;
+}
+
 .text-content {
     --tp-offset-y: 0px;
     --tp-scale-x: 1;
-
     width: 100%;
-    padding: 0 100px;
+    padding: 0 40px;
     color: var(--text-white);
-    font-size: 72px;
+    font-size: 40px;
+    /* Fixado em 40px padrão conforme solicitado */
     line-height: 1.2;
     outline: none;
-    transition: transform 0.25s ease;
+    transition: none;
     transform: translateY(var(--tp-offset-y)) scaleX(var(--tp-scale-x));
     transform-origin: center center;
     will-change: transform;
+
+    display: flex;
+    flex-direction: column;
 }
 
-/* Linha atualmente acompanhada pelo teleprompter */
+.text-content.tp-suavizando {
+    transition: transform 220ms ease-out;
+}
+
+#editor[contenteditable="true"] {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
 .linha-atual {
-    color: #00d9ff;
-    font-weight: bold;
+    color: #ffffff;
+    font-weight: normal;
 }
 
-/* Cada linha do roteiro */
+.comentario.linha-atual {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-weight: normal !important;
+}
+
+.winplus-active #winplus-side-panel #display .comentario.linha-atual {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-weight: normal !important;
+}
+
+
+/* Na tela 4:3, a linha lida não deve ficar azul.
+   A indicação visual fica pela seta lateral. */
+.winplus-active #winplus-side-panel #display .linha-atual {
+    color: #ffffff !important;
+    font-weight: normal !important;
+}
+
 .linha-roteiro {
     margin-bottom: 18px;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
 }
+
+.comentario {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 2px 6px;
+    margin: 0 auto 18px auto;
+    border-radius: 4px;
+    max-width: 100%;
+    text-align: center;
+    width: fit-content;
+}
+
+#editor .comentario,
+#display .comentario,
+#editor .comentario.linha-atual,
+#display .comentario.linha-atual {
+    text-decoration: none !important;
+}
+
 
 
 /* ==========================================================================
-   3. TELA DE COMANDO PRINCIPAL
+   3. TOOLBAR SUPERIOR E BOTÕES DE COMANDO
    ========================================================================== */
-
 .toolbar {
     display: flex;
     align-items: center;
     background: var(--bg-panel);
-    padding: 8px 15px;
-    gap: 12px;
-    height: 65px;
+    padding: 6px 12px;
+    gap: 10px;
+    height: 58px;
+}
+
+.toolbar-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .logo-circle img {
-    width: 45px;
-    height: 45px;
+    width: 40px;
+    height: 40px;
 }
 
-.group img,
-.mini-group-horizontal img {
+.group img {
     width: 20px;
     height: 20px;
 }
@@ -112,7 +181,7 @@ body {
     background: var(--accent-blue);
     color: var(--text-dark);
     font-weight: bold;
-    padding: 6px 12px;
+    padding: 5px 10px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -135,12 +204,66 @@ body {
     color: #ffffff !important;
 }
 
-.btn-invert.active,
-.btn-invert-mini.active {
-    background: #7a1a1a !important;
-    color: var(--text-white) !important;
+.btn-winplus-play {
+    background: #0076ff !important;
+    color: #ffffff !important;
+    border: none !important;
+    height: 30px;
+    padding: 0 18px !important;
+    font-weight: bold !important;
+    border-radius: 4px !important;
+    cursor: pointer;
+    font-size: 11px !important;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
+.btn-winplus-play.active-stop {
+    background: #cc2929 !important;
+}
+
+.btn-scroll-toggle {
+    background: #111111 !important;
+    color: #ffffff !important;
+    border: 1px solid #4c647d !important;
+    height: 30px;
+    padding: 0 16px !important;
+    font-weight: bold !important;
+    border-radius: 4px !important;
+    cursor: pointer;
+    font-size: 11px !important;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-scroll-toggle.active {
+    background: #b8741a !important;
+    color: #ffffff !important;
+    border-color: #b8741a !important;
+}
+
+.btn-invert {
+    background: #000000 !important;
+    color: var(--accent-blue) !important;
+    border: 1px solid #444444 !important;
+    height: 30px;
+    padding: 0 15px !important;
+    font-size: 11px !important;
+    font-weight: bold;
+    border-radius: 4px !important;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ==========================================================================
+   4. LAYOUT CHAVEADO DINÂMICO WINPLUS
+   ========================================================================== */
 .main-layout {
     display: flex;
     height: calc(100vh - 65px);
@@ -148,8 +271,22 @@ body {
     gap: 15px;
 }
 
-.main-layout .tp-area {
+/* Painel principal do roteiro à esquerda */
+.main-editor-panel {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.main-editor-panel #tp-viewport {
+    flex: 1;
+    min-height: 0;
+}
+
+
+.main-layout .tp-area {
     background: var(--bg-tp);
     border: 5px solid #222222;
     position: relative;
@@ -158,10 +295,187 @@ body {
     align-items: center;
 }
 
+.winplus-inactive .main-layout .main-editor-panel {
+    flex: 1 !important;
+}
+
+.winplus-inactive .main-layout #winplus-side-panel {
+    display: none !important;
+}
+
+.winplus-active .main-layout .main-editor-panel {
+    flex: 0 0 50% !important;
+}
+
+.winplus-active .main-layout #tp-viewport {
+    border-right: 2px solid #2b3d52;
+}
+
+/* Ajuste da tela esquerda quando estiver no modo dividido */
+.winplus-active #editor.text-content {
+    width: 100% !important;
+    height: 100% !important;
+
+    font-size: clamp(34px, 2.8vw, 46px) !important;
+    line-height: 1.12 !important;
+
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    white-space: normal !important;
+    text-align: center !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+
+    padding: 0 50px !important;
+}
+
+/* Blocos de texto da esquerda no modo dividido */
+.winplus-active #editor .linha-roteiro {
+    max-width: 760px !important;
+    width: auto !important;
+    text-align: center !important;
+    line-height: 1.1 !important;
+    margin-bottom: 12px !important;
+}
+
+/* Comentários da esquerda no modo dividido */
+.winplus-active #editor .comentario {
+    margin: 0 auto 14px auto !important;
+    text-align: center !important;
+    width: fit-content !important;
+    max-width: 90% !important;
+}
+
+.winplus-active .main-layout #winplus-side-panel {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+    background: #1b2836;
+    padding: 18px 22px 0 22px;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.editor-header,
+.preview-header {
+    width: 100%;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    color: var(--accent-blue);
+    font-weight: bold;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0 4px;
+    opacity: 0.95;
+}
+
+.preview-header {
+    max-width: 680px;
+}
+
+.winplus-box-4x3 {
+    position: relative;
+    width: 100%;
+    max-width: 720px;
+    aspect-ratio: 4 / 3;
+    max-height: 60vh;
+    background: #000000;
+    border: 2px solid #4c647d;
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    box-sizing: border-box;
+    box-shadow:
+        0 0 0 1px rgba(155, 197, 226, 0.12),
+        0 8px 20px rgba(0, 0, 0, 0.35);
+}
 
 /* ==========================================================================
-   4. PAINEL DE CONTROLE DE VELOCIDADE / ROLAGEM
+   MODIFICAÇÃO EXCLUSIVA: MINI TELA ATIVADA COMEÇANDO LÁ EM BAIXO
    ========================================================================== */
+.winplus-active #winplus-side-panel #display.text-content {
+    width: 100% !important;
+    height: 100% !important;
+
+    font-size: clamp(26px, 2.45vw, 38px) !important;
+    line-height: 1.12 !important;
+
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    white-space: normal !important;
+    text-align: center !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+
+    padding: 0 50px 140px 50px !important;
+}
+
+/* Garante o comportamento de centralização dos blocos internos */
+.winplus-active #winplus-side-panel #display .linha-roteiro {
+    max-width: 520px !important;
+    width: auto !important;
+    text-align: center !important;
+    line-height: 1.1 !important;
+    margin-bottom: 14px !important;
+}
+
+.winplus-active #winplus-side-panel #display .comentario {
+    margin: 0 auto 14px auto !important;
+    text-align: center !important;
+    width: fit-content !important;
+    max-width: 90% !important;
+}
+
+/* ==========================================================================
+   INTERFACE COMPLEMENTAR E BOTÕES RESTANTES
+   ========================================================================== */
+.arrow-indicator-mini {
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--winplus-blue);
+    font-size: 38px;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 1;
+
+    width: auto;
+    height: auto;
+    display: block;
+
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+.winplus-log-box {
+    width: 100%;
+    flex: 1;
+    min-height: 150px;
+    max-height: 30vh;
+    background: #cccccc;
+    color: #000000;
+    font-family: monospace;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    border-radius: 2px;
+    margin-bottom: 5px;
+}
 
 .side-panel {
     width: 80px;
@@ -171,6 +485,11 @@ body {
     flex-direction: column;
     align-items: center;
     padding: 10px 0;
+}
+
+/* Em tela cheia, esconde o painel lateral para deixar a leitura limpa */
+.winplus-inactive .side-panel {
+    display: none !important;
 }
 
 .nav-btn {
@@ -239,142 +558,145 @@ body {
     align-self: center;
 }
 
-
 /* ==========================================================================
-   5. TELA DE SAÍDA DO TELEPROMPTER FULLSCREEN
+   AJUSTE — TEMPOS DO JSON / PAUSAS / IMPROVISO
    ========================================================================== */
 
-.tp-viewport-fullscreen {
-    width: 100vw;
-    height: 100vh;
-    background-color: var(--bg-tp);
-    display: flex;
-    align-items: center;
-    position: absolute;
-    overflow: hidden;
-    top: 0;
-    left: 0;
-    z-index: 1;
+.linha-roteiro[data-tipo-linha="pausa_tecnica"],
+.comentario[data-tipo-linha="pausa_tecnica"] {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border-left: none !important;
+    padding: 4px 10px;
 }
 
-.tp-top-toolbar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 60px;
-    background: var(--bg-panel);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border-bottom: 2px solid var(--accent-blue);
+.linha-roteiro[data-tipo-linha="tecnico"],
+.comentario[data-tipo-linha="tecnico"] {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 4px 10px;
 }
 
-.toolbar-hidden {
-    transform: translateY(-100%);
+.linha-roteiro[data-tipo-linha="separador"],
+.comentario[data-tipo-linha="separador"] {
+    opacity: 0.75;
 }
 
-.toolbar-content-horizontal {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 15px;
-    height: 100%;
+/* Forma moderna para o slider vertical.
+   Evita o aviso de depreciação do Chrome sobre slider-vertical. */
+.wheel-slider {
+    writing-mode: vertical-lr;
+    direction: rtl;
 }
 
-.mini-group-horizontal {
-    display: flex;
-    flex-direction: row;
-    background: var(--accent-blue);
-    padding: 3px;
-    border-radius: 4px;
-    gap: 4px;
+/* Evita seleção azul/cursor visual dentro do teleprompter */
+#editor,
+#display,
+#editor .linha-roteiro,
+#display .linha-roteiro,
+#editor .comentario,
+#display .comentario {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    caret-color: transparent !important;
 }
 
-.mini-group-horizontal button {
-    border: none;
-    background: #ffffff;
-    color: var(--text-dark);
-    padding: 6px 14px;
-    font-weight: bold;
-    cursor: pointer;
-    border-radius: 2px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+#editor::selection,
+#display::selection,
+#editor *::selection,
+#display *::selection {
+    background: transparent !important;
+    color: inherit !important;
 }
 
-.mini-group-horizontal button:hover {
-    background: #e6e6e6;
+/* Remove qualquer marca azul/foco/borda nos comentários técnicos */
+#editor .comentario,
+#display .comentario,
+#editor .comentario.linha-atual,
+#display .comentario.linha-atual,
+#editor .comentario:focus,
+#display .comentario:focus,
+#editor .comentario:active,
+#display .comentario:active {
+    border-left: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    text-decoration: none !important;
+    caret-color: transparent !important;
 }
 
-.size-indicator-box {
-    padding: 0 12px;
-    background: var(--text-dark);
-    color: var(--text-white);
-    font-size: 13px;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    border-radius: 2px;
+/* Garante que comentário atual continue só branco/preto */
+#editor .comentario.linha-atual,
+#display .comentario.linha-atual {
+    background: #ffffff !important;
+    color: #000000 !important;
 }
 
-.btn-invert-mini,
-.btn-invert {
-    margin-left: auto;
-    background: #000000 !important;
-    color: var(--accent-blue) !important;
-    border: 1px solid #444444 !important;
-    padding: 6px 15px !important;
-    font-size: 11px !important;
-    font-weight: bold;
-    border-radius: 4px !important;
-    cursor: pointer;
+/* Corrige a tela cheia para o roteiro começar do topo visual correto */
+.winplus-inactive #tp-viewport {
+    align-items: stretch !important;
 }
 
-.btn-x-close {
-    position: absolute;
-    right: 20px;
-    background: #7a1a1a !important;
-    color: var(--text-white) !important;
-    border-radius: 50% !important;
-    border: none;
-    width: 30px;
-    height: 30px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
+.winplus-inactive #editor.text-content {
+    height: 100% !important;
+    min-height: 100% !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+
+    padding-top: 0 !important;
+    padding-bottom: 140px !important;
 }
 
-.btn-x-close:hover {
-    background: #a32424 !important;
+/* Deixa o texto mais estável no modo dividido */
+.winplus-active #editor.text-content {
+    font-size: 38px !important;
+    line-height: 1.12 !important;
 }
 
-.restore-arrow {
-    position: fixed;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--winplus-blue);
-    color: var(--text-white);
-    border: none;
-    padding: 5px 25px;
-    border-radius: 0 0 10px 10px;
-    cursor: pointer;
-    z-index: 1001;
-    font-size: 14px;
-    font-weight: bold;
+.winplus-active #winplus-side-panel #display.text-content {
+    font-size: 32px !important;
+    line-height: 1.12 !important;
 }
 
-.tp-side-speed {
-    position: fixed;
-    right: 25px;
-    top: 50%;
-    transform: translateY(-50%);
-    height: 65vh;
-    z-index: 10;
+/* ==========================================================
+   AJUSTE FINAL — PAINEL LATERAL DE VELOCIDADE
+   Evita o slider estourar para fora da tela
+   ========================================================== */
+
+.winplus-active .side-panel {
+    flex: 0 0 76px !important;
+    width: 76px !important;
+    height: calc(100vh - 105px) !important;
+    max-height: calc(100vh - 105px) !important;
+    min-height: 0 !important;
+
+    padding: 8px 0 !important;
+    margin: 0 !important;
+
+    overflow: hidden !important;
+    align-self: stretch !important;
+}
+
+.winplus-active .wheel-container {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: 100% !important;
+
+    margin: 8px 0 !important;
+    overflow: hidden !important;
+}
+
+.winplus-active .wheel-slider {
+    height: 100% !important;
+    max-height: 100% !important;
+}
+
+.winplus-active .nav-btn {
+    flex: 0 0 auto !important;
+    height: 28px !important;
+    margin-bottom: 5px !important;
 }

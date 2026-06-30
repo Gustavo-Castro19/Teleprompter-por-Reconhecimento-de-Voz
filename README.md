@@ -10,7 +10,7 @@ Nesta versão, o sistema utiliza o **Vosk**, uma tecnologia de reconhecimento de
 
 ## 1. Status atual do MVP
 
-O projeto encontra-se em fase de testes e refinamentos finais.
+O projeto encontra-se em versão funcional de demonstração para a entrega final.
 
 Atualmente, a equipe já desenvolveu a base principal do sistema, incluindo:
 
@@ -32,16 +32,19 @@ Atualmente, a equipe já desenvolveu a base principal do sistema, incluindo:
 * ajuste manual da velocidade da rolagem pelo slider lateral;
 * sincronização visual da posição do texto;
 * geração de segmentos do roteiro com índices e estimativa de tempo de leitura;
-* acompanhamento técnico da execução por logs exibidos no terminal.
+* acompanhamento técnico da execução por logs exibidos no terminal;
+* uso de roteiro de demonstração tratado a partir de uma amostra real do BDDF;
+* envio de roteiro, segmentos, metadados e configuração de rolagem ao frontend;
+* evento independente de configuração de rolagem via SocketIO;
+* rolagem assistida por voz, utilizando o JSON como referência inicial de ritmo e a fala reconhecida como ajuste em tempo real;
+* modo operador com painel auxiliar em formato 4:3;
+* fallback manual por botões de avanço e retorno.
 
 A interface visual do MVP já está integrada ao backend e funciona em uma única página principal. Nessa página, o usuário pode visualizar o roteiro, utilizar controles manuais, ajustar fonte e tamanho do texto, inverter a exibição da tela e controlar a velocidade da rolagem contínua.
 
-O botão `PLAY/PARAR` alterna a visualização da interface para o modo com painel auxiliar em formato 4:3, enquanto o botão `INVERTER TELA` realiza o espelhamento horizontal do texto exibido.
+O botão `INICIAR ROLAGEM` / `PAUSAR ROLAGEM` controla a rolagem contínua do texto. O botão `MODO OPERADOR` / `TELA CHEIA` altera apenas o modo visual da interface, sem iniciar ou pausar automaticamente o motor. O botão `INVERTER TELA` realiza o espelhamento horizontal do texto exibido.
 
-Ainda está em desenvolvimento:
-
-* cálculo e envio de velocidade sugerida pelo backend para o frontend, a partir dos metadados e tempos estimados do roteiro;
-* testes mais completos em diferentes computadores, microfones e cenários de uso.
+Como limitação atual, o sistema ainda depende da qualidade do microfone, da clareza da leitura e das limitações do Vosk, especialmente em siglas, nomes próprios, termos jornalísticos e frases longas. Por isso, o fallback manual permanece como recurso de apoio durante a demonstração.
 
 ---
 
@@ -51,7 +54,7 @@ Ainda está em desenvolvimento:
 * Vosk
 * PyAudio
 * Flask
-* SocketIO
+* Flask-SocketIO
 * HTML
 * CSS
 * JavaScript
@@ -88,6 +91,8 @@ O backend processa esse JSON para gerar duas estruturas principais:
 
 Além disso, o processamento do roteiro gera segmentos com informações de apoio, como índice falado, índice visual e estimativa de tempo de leitura.
 
+A versão final da demonstração utiliza o arquivo `roteiros/roteiro_demo_bddf.json`, criado a partir de uma amostra tratada do BDDF. O arquivo `BDDF-07042026.txt` permanece como referência do espelho bruto, enquanto o roteiro demo tratado é utilizado para garantir maior estabilidade visual e reduzir ruídos causados por HTML, tags e marcações internas.
+
 Abaixo está uma visão geral dos principais arquivos e pastas do projeto:
 
 ```text
@@ -105,7 +110,8 @@ projeto/
 ├── registrador_eventos.py
 ├── seguranca.py
 ├── roteiros/
-│   └── roteiro_teste.json
+│   ├── BDDF-07042026.txt
+│   └── roteiro_demo_bddf.json
 ├── model/
 │   └── modelo Vosk em português
 ├── static/
@@ -126,11 +132,11 @@ projeto/
 
 | Arquivo                  | Função                                                                                                                                                                                    |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app.py`                 | Arquivo principal do sistema. Inicializa o servidor Flask + SocketIO, carrega o roteiro, coordena o reconhecimento de fala, inicia o motor de áudio e envia informações para a interface. |
-| `processador_roteiro.py` | Processa o roteiro em JSON, separando o texto exibido do texto falado, preservando comandos técnicos na visualização e gerando segmentos com tempo estimado de leitura.                   |
+| `app.py`                 | Arquivo principal do sistema. Inicializa o servidor Flask + SocketIO, carrega o roteiro, coordena o reconhecimento de fala, inicia o motor de áudio e envia roteiro, segmentos, metadados e configuração de rolagem para a interface web. |
+| `processador_roteiro.py` | Processa o roteiro em JSON, separando o texto exibido do texto falado, preservando comandos técnicos na visualização e gerando segmentos com metadados e estimativas de leitura.                   |
 | `reconhecedor_fala.py`   | Inicializa e utiliza o Vosk para transformar áudio em texto parcial ou final.                                                                                                             |
 | `motor_audio.py`         | Abre, lê e fecha o microfone utilizando PyAudio.                                                                                                                                          |
-| `controlador_rolagem.py` | Compara a fala reconhecida com o roteiro e decide quando avançar ou retornar a posição do teleprompter.                                                                                   |
+| `controlador_rolagem.py` | Compara a fala reconhecida com o roteiro, calcula métricas de similaridade, cobertura e relevância, decide avanços e emite informações de andamento da voz para apoiar a rolagem assistida.                                                                                   |
 | `normalizador_texto.py`  | Normaliza textos, removendo diferenças de formatação para melhorar a comparação.                                                                                                          |
 | `maquina_estados.py`     | Controla estados internos do sistema, como automático, pausado, finalizado, falha e improviso.                                                                                            |
 | `alinhador_roteiro.py`   | Relaciona a linha falada com a linha visual exibida na interface.                                                                                                                         |
@@ -138,10 +144,12 @@ projeto/
 | `registrador_eventos.py` | Centraliza mensagens e eventos exibidos no terminal durante os testes.                                                                                                                    |
 | `seguranca.py`           | Centraliza funções iniciais relacionadas à segurança e ocultação de dados sensíveis.                                                                                                      |
 | `modelos.py`             | Define estruturas de dados utilizadas no processamento dos segmentos do roteiro.                                                                                                          |
-| `comando.html`           | Página principal da interface, reunindo visualização do roteiro, controles manuais, barra de ferramentas e painel auxiliar 4:3.                                                           |
-| `script.js`              | Controla a comunicação da interface com o backend via SocketIO, a renderização do roteiro, a rolagem contínua, o slider de velocidade, os comandos manuais e os ajustes visuais.          |
-| `style.css`              | Define a aparência visual da interface, incluindo barra de ferramentas, área do teleprompter, painel auxiliar 4:3 e controle lateral.                                                     |
+| `comando.html`           | Página principal da interface, reunindo visualização do roteiro, controles manuais, barra de ferramentas, botão de rolagem, modo operador e painel auxiliar 4:3.                                                           |
+| `script.js`              | Controla a comunicação da interface com o backend via SocketIO, renderização do roteiro, rolagem contínua, ajuste de velocidade, sincronização por voz, comandos manuais, modo operador, tela cheia e ajustes visuais.          |
+| `style.css`              | Define a aparência visual da interface, incluindo barra de ferramentas, área do teleprompter, modo operador, painel auxiliar 4:3, painel lateral de velocidade e comentários técnicos.                                                     |
 | `static/imgs/`           | Armazena a logo e os ícones utilizados nos botões da interface.                                                                                                                           |
+| `roteiro_demo_bddf.json` | Roteiro tratado utilizado na demonstração final do MVP, baseado em uma amostra do BDDF e adaptado para reduzir problemas com HTML bruto, tags e blocos muito longos. |
+| `BDDF-07042026.txt` | Arquivo de referência do roteiro original/bruto utilizado como base para tratamento e testes. |
 
 ---
 
@@ -266,7 +274,7 @@ projeto/
 ├── model/
 │   └── arquivos do modelo Vosk
 ├── roteiros/
-│   └── roteiro_teste.json
+│   └── roteiro_demo_bddf.json
 ├── static/
 ├── templates/
 ├── requirements.txt
@@ -452,19 +460,22 @@ python app.py
 
 O sistema irá:
 
-1. carregar o roteiro configurado;
+1. carregar o roteiro configurado em `roteiros/roteiro_demo_bddf.json`;
 2. processar o roteiro em JSON;
 3. separar texto exibido e texto falado;
-4. iniciar o servidor Flask + SocketIO;
-5. disponibilizar a interface web;
-6. inicializar o reconhecedor de fala com Vosk;
-7. abrir o microfone;
-8. comparar a fala reconhecida com as linhas do roteiro;
-9. sincronizar a posição do texto exibido na interface.
+4. gerar segmentos com índices, tipos, metadados e estimativas de leitura;
+5. enviar o roteiro, os segmentos e a configuração de rolagem ao frontend;
+6. iniciar o servidor Flask + SocketIO;
+7. disponibilizar a interface web;
+8. inicializar o reconhecedor de fala com Vosk;
+9. abrir o microfone;
+10. comparar a fala reconhecida com as linhas do roteiro;
+11. sincronizar a posição do texto exibido na interface.
 
 Durante a execução, o terminal é utilizado para acompanhar informações técnicas do sistema, como:
 
 * carregamento e diagnóstico do roteiro;
+* envio de segmentos e configuração de rolagem;
 * inicialização do Vosk;
 * abertura do microfone;
 * mensagens reconhecidas;
@@ -489,10 +500,12 @@ A interface atual funciona em uma única página principal, reunindo:
 * barra de ferramentas;
 * abertura e salvamento de arquivo;
 * opções de fonte, tamanho e formatação;
-* botão de inversão da tela;
-* controle lateral de velocidade da rolagem;
-* botões manuais de avanço e retorno;
-* modo com painel auxiliar em formato 4:3.
+* botão `INVERTER TELA`;
+* botão `INICIAR ROLAGEM` / `PAUSAR ROLAGEM`;
+* botão `MODO OPERADOR` / `TELA CHEIA`;
+* botões manuais `PREV` e `NEXT`;
+* painel lateral de velocidade da rolagem;
+* modo operador com painel auxiliar em formato 4:3.
 
 ---
 
@@ -502,16 +515,19 @@ Após iniciar o sistema:
 
 1. verifique se o microfone está conectado;
 2. acesse a interface em `http://127.0.0.1:5500/comando`;
-3. confirme se o roteiro foi carregado corretamente;
+3. confirme se o roteiro `roteiro_demo_bddf.json` foi carregado corretamente;
 4. ajuste fonte, tamanho ou formatação do texto, se necessário;
 5. utilize o botão `INVERTER TELA` caso seja necessário espelhar horizontalmente a exibição;
-6. ajuste a velocidade da rolagem contínua utilizando o slider lateral;
-7. utilize o botão `PLAY/PARAR` para alternar a visualização com painel auxiliar em formato 4:3;
-8. acompanhe o destaque da linha atual durante a leitura;
-9. utilize os botões `PREV` e `NEXT` caso seja necessário intervir manualmente;
-10. acompanhe no terminal os logs gerados durante os testes.
+6. utilize o botão `INICIAR ROLAGEM` para iniciar a rolagem contínua do texto;
+7. utilize o botão `PAUSAR ROLAGEM` caso seja necessário interromper temporariamente a rolagem;
+8. utilize o botão `MODO OPERADOR` para alternar a visualização para o modo com painel auxiliar em formato 4:3;
+9. utilize o botão `TELA CHEIA` para retornar ao modo principal de visualização;
+10. utilize os botões `PREV` e `NEXT` caso seja necessário intervir manualmente no avanço ou retorno do roteiro;
+11. acompanhe no terminal os logs gerados durante os testes, incluindo mensagens do Vosk, eventos de rolagem, comandos recebidos, configuração de rolagem e mudanças de estado.
 
 A interface também permite abrir arquivos locais nos formatos `.txt` e `.json`, editar visualmente o roteiro e salvar o conteúdo em arquivo `.txt`.
+
+Na demonstração final, recomenda-se utilizar o roteiro `roteiros/roteiro_demo_bddf.json`, pois ele foi tratado para preservar a aparência de um espelho jornalístico real sem carregar marcações brutas que possam prejudicar a apresentação.
 
 ---
 
@@ -649,6 +665,28 @@ Caso o modelo esteja na pasta correta, mas o Vosk apresente erro durante a inici
 ```text
 model/rescore  →  model/rescore_disable
 ```
+---
+
+### Roteiro de demonstração não encontrado
+
+Verifique se o arquivo `roteiro_demo_bddf.json` está dentro da pasta `roteiros`.
+
+A estrutura esperada é:
+
+```text
+projeto/
+├── app.py
+├── roteiros/
+│   └── roteiro_demo_bddf.json
+```
+
+O caminho configurado no sistema deve apontar para:
+
+```text
+roteiros/roteiro_demo_bddf.json
+```
+
+Caso o arquivo não exista ou esteja com outro nome, o sistema poderá apresentar erro ao iniciar.
 
 ---
 
@@ -698,14 +736,37 @@ __pycache__/
 
 ---
 
-## 6. Equipe
+## 6. Limitações atuais e evoluções futuras
+
+A versão atual demonstra a viabilidade de um teleprompter assistido por reconhecimento de voz, com rolagem contínua, fallback manual, integração com backend e uso de roteiro tratado.
+
+Ainda assim, alguns pontos permanecem como limitações ou oportunidades de evolução:
+
+* o reconhecimento offline com Vosk ainda pode apresentar erros em siglas, nomes próprios e termos jornalísticos;
+* frases longas podem demorar mais para avançar porque o sistema aguarda critérios mínimos de similaridade e cobertura;
+* a sincronização ainda ocorre por linha ou bloco, não por palavra ou subtrecho;
+* comandos técnicos e separadores ainda podem exigir refinamento no mapeamento entre linha visual e linha falada;
+* o roteiro bruto completo do iNEWS/NewsHub ainda exige um parser mais robusto para uso sem tratamento manual;
+* alguns saltos visuais ainda podem ocorrer quando o mapeamento atravessa comandos técnicos ou blocos não falados;
+* o fallback manual ainda é necessário quando o Vosk não entende uma fala, demora para atingir score suficiente ou quando há ruído no ambiente;
+* a aplicação da velocidade sugerida pode ser refinada em versões futuras, combinando com mais precisão os tempos do JSON, a fala real e o comportamento visual do frontend;
+* futuras versões podem incluir indicadores de status para microfone, reconhecimento, qualidade da sincronização, modo automático/manual e estado da rolagem.
+
+---
+
+
+## 7. Equipe
 
 Projeto desenvolvido pela **Squad 29**.
 
-| Integrante | Responsabilidade                 |
-| ---------- | -------------------------------- |
-| [Nome]     | Backend / reconhecimento de fala |
-| [Nome]     | Processamento do roteiro JSON    |
-| [Nome]     | Interface HTML/CSS/JavaScript    |
-| [Nome]     | Documentação                     |
-| [Nome]     | Testes e validação               |
+| Integrante | Responsabilidade |
+| ---------- | ---------------- |
+| Ana Clara Lélis | Gestão do projeto, Engenharia de Software, apoio ao desenvolvimento, QA (Quality Assurance) e documentação técnica |
+| Ana Luísa Moreira | Engenharia de Software e QA (Quality Assurance) |
+| Ana Luiza Galati | Design de Interface (UI/UX) e documentação técnica |
+| Anelise P. Birk | Design de Interface (UI/UX) e comunicação visual |
+| Arthur Ramalho | Engenharia de Software e QA (Quality Assurance)|
+| Daniel Luiz de Souza | Design de Interface (UI/UX) |
+| Daphine Milani | Design de Interface (UI/UX) e documentação técnica |
+| Diego Marcelo | Liderança do desenvolvimento, gestão técnica do desenvolvimento, Engenharia de Software e QA (Quality Assurance) |
+| Laura Mavalli | Design de Interface (UI/UX) e comunicação visual |
