@@ -584,6 +584,92 @@ function atualizarTextoBotaoRolagem() {
     }
 }
 
+function popularDispositivosAudio(dispositivos) {
+    const select = document.getElementById("audioDeviceSelect");
+    if (!select) return;
+
+    const valorAtual = select.value;
+
+    select.innerHTML = "";
+
+    const opcaoAuto = document.createElement("option");
+    opcaoAuto.value = "auto";
+    opcaoAuto.textContent = "🔄 Auto (primeiro disponível)";
+    select.appendChild(opcaoAuto);
+
+    dispositivos.forEach((dispositivo) => {
+        const opcao = document.createElement("option");
+        opcao.value = String(dispositivo.index);
+        opcao.textContent = `🎤 ${dispositivo.name} (ch: ${dispositivo.maxInputChannels}, ${Math.round(dispositivo.defaultSampleRate)}Hz)`;
+        select.appendChild(opcao);
+    });
+
+    const salvo = localStorage.getItem("tp_audio_device");
+    if (salvo) {
+        select.value = salvo;
+    } else if (valorAtual) {
+        select.value = valorAtual;
+    }
+
+    console.log(`[AUDIO] ${dispositivos.length} dispositivos carregados no dropdown`);
+}
+
+function mostrarToast(mensagem, tipo = "info") {
+    let container = document.getElementById("toast-container");
+    if (!container) {
+        container = document.createElement("div");
+        container.id = "toast-container";
+        container.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            pointer-events: none;
+        `;
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement("div");
+    toast.textContent = mensagem;
+    toast.style.cssText = `
+        padding: 12px 20px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #fff;
+        background: ${tipo === "error" ? "#cc2929" : tipo === "success" ? "#2e7d32" : "#0076ff"};
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: slideIn 0.3s ease-out;
+        pointer-events: auto;
+    `;
+
+    if (!document.getElementById("toast-styles")) {
+        const style = document.createElement("style");
+        style.id = "toast-styles";
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.animation = "slideOut 0.3s ease-in forwards";
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
 function pararRolagemContinua() {
     rolagemContinuaAtiva = false;
     rolagemInterrompidaManualmente = true;
@@ -764,6 +850,14 @@ socket.on("estado_rolagem", (dados) => {
         return;
     }
 
+    if (dados.tipo === "RECONECTANDO_AUDIO") {
+        // Bloqueia rolagem durante troca de dispositivo de áudio
+        rolagemBloqueadaPorSistema = true;
+        motivoBloqueioRolagem = "RECONECTANDO_AUDIO";
+        mostrarToast("Trocando dispositivo de áudio...", "info");
+        return;
+    }
+
     if (dados.tipo === "AUTOMATICO") {
         liberarRolagemPorRetornoAoRoteiro();
         velocidadeVozFatorAlvo = 1.0;
@@ -800,6 +894,41 @@ socket.on("status_motor", (dados) => {
     if (dados.estado === "AUTOMATICO" && motivoBloqueioRolagem === "IMPROVISO") {
         liberarRolagemPorRetornoAoRoteiro();
     }
+
+    if (dados.estado === "RECONECTANDO_AUDIO") {
+        // Bloqueia rolagem durante reconexão de áudio
+        rolagemBloqueadaPorSistema = true;
+        motivoBloqueioRolagem = "RECONECTANDO_AUDIO";
+        mostrarToast("Trocando dispositivo de áudio...", "info");
+    }
+});
+
+
+socket.on("config_tp_display", (dados) => {
+    console.log("Configuração TP Display recebida:", dados);
+
+    if (!dados) return;
+
+    const root = document.documentElement;
+
+    if (typeof dados.maxWidthVw === "number") {
+        root.style.setProperty("--tp-max-width-vw", `${dados.maxWidthVw}vw`);
+    }
+
+    if (typeof dados.maxHeightVh === "number") {
+        root.style.setProperty("--tp-max-height-vh", `${dados.maxHeightVh}vh`);
+    }
+
+    console.log("CSS variables atualizadas para TP Display");
+});
+
+
+socket.on("dispositivos_audio", (dados) => {
+    console.log("Dispositivos de áudio recebidos:", dados);
+
+    if (!dados || !dados.dispositivos) return;
+
+    popularDispositivosAudio(dados.dispositivos);
 });
 
 // ============================================================
@@ -874,6 +1003,24 @@ if (scrollToggleBtn) {
             iniciarTemporizadorDaLinha();
         }
     });
+}
+
+// Seletor de dispositivo de áudio
+const audioDeviceSelect = document.getElementById("audioDeviceSelect");
+if (audioDeviceSelect) {
+    audioDeviceSelect.addEventListener("change", () => {
+        const deviceIndex = audioDeviceSelect.value;
+        localStorage.setItem("tp_audio_device", deviceIndex);
+        socket.emit("selecionar_dispositivo_audio", { device_index: deviceIndex });
+        console.log("[AUDIO] Dispositivo selecionado:", deviceIndex);
+    });
+
+    // Restaura seleção salva ao carregar
+    const salvo = localStorage.getItem("tp_audio_device");
+    if (salvo) {
+        audioDeviceSelect.value = salvo;
+        socket.emit("selecionar_dispositivo_audio", { device_index: salvo });
+    }
 }
 
 // ============================================================
