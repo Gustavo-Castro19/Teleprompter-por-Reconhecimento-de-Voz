@@ -68,4 +68,31 @@ CONFIG = {
     # Maior = reage mais rápido; menor = visual mais suave.
     "suavidade_velocidade_voz": 0.08,
 
+    # ============================================================
+    # CONFIGURAÇÃO DO TELEPROMPTER (TELA 4:3)
+    # ============================================================
+    "tp_display": {
+        # Largura máxima como % da viewport
+        "max_width_vw": 90,
+        # Altura máxima como % da viewport
+        "max_height_vh": 60,
+        # Proporção de aspecto (mantido via CSS aspect-ratio)
+        "aspect_ratio": "4/3"
+    },
+
+    # ============================================================
+    # CONFIGURAÇÃO DE ÁUDIO
+    # ============================================================
+    "audio": {
+        # Índice do dispositivo de entrada (None = auto-selecionar o primeiro disponível)
+        "device_index": None,
+        # Taxa de amostragem (Hz) - compatível com Vosk
+        "sample_rate": 16000,
+        # Canais de áudio (1 = mono)
+        "channels": 1,
+        # Tamanho do buffer de leitura (frames)
+        "chunk_size": 2048,
+        # Tamanho do buffer de abertura (frames)
+        "open_chunk_size": 2048
+    }
 }

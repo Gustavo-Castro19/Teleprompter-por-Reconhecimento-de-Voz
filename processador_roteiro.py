@@ -413,88 +413,151 @@ class ProcessadorRoteiro:
         with open(CONFIG["caminho_roteiro"], "r", encoding="utf-8") as arquivo:
             dados = json.load(arquivo)
 
-        indice_visual_global = 0
-        indice_falado_global = 0
+            indice_visual_global = 0
+            indice_falado_global = 0
 
-        for slug in dados.get("slugs", []):
-            meta = self.extrair_meta_slug(slug)
+            for slug in dados.get("slugs", []):
+                meta = self.extrair_meta_slug(slug)
 
-            linhas_exibidas_slug = []
-            tipos_linhas_slug = []
-            linhas_roteiro_slug = []
-            falar_para_exibir_slug = []
+                linhas_exibidas_slug = []
+                tipos_linhas_slug = []
+                linhas_roteiro_slug = []
+                falar_para_exibir_slug = []
 
-            tem_notes_with_body = (
-                "notesWithBody" in slug
-                and slug["notesWithBody"]
-            )
-
-            if tem_notes_with_body:
-                blocos = []
-
-                for nota in slug["notesWithBody"]:
-                    textos_nota = nota.get("text", [])
-
-                    if isinstance(textos_nota, list):
-                        blocos.extend(textos_nota)
-                    else:
-                        blocos.append(textos_nota)
-            else:
-                blocos = [slug.get("body", "")]
-
-            for item_texto in blocos:
-                resultado = self.processar_bloco_texto(
-                    item_texto,
-                    indice_visual_global
+                tem_notes_with_body = (
+                    "notesWithBody" in slug
+                    and slug["notesWithBody"]
                 )
 
-                linhas_exibidas_slug.extend(resultado["linhas_exibidas"])
-                tipos_linhas_slug.extend(resultado["tipos_linhas_exibidas"])
-                linhas_roteiro_slug.extend(resultado["linhas_roteiro"])
-                falar_para_exibir_slug.extend(resultado["falar_para_exibir"])
+                if tem_notes_with_body:
+                    blocos = []
 
-                indice_visual_global = resultado["proximo_indice_visual"]
+                    for nota in slug["notesWithBody"]:
+                        textos_nota = nota.get("text", [])
 
-            tempos_fala = self.distribuir_tempos_de_fala(
-                linhas_roteiro_slug,
-                meta["speaking_time"]
-            )
+                        if isinstance(textos_nota, list):
+                            blocos.extend(textos_nota)
+                        else:
+                            blocos.append(textos_nota)
+                else:
+                    blocos = [slug.get("body", "")]
 
-            pausa_tecnica, motivo_pausa = self.obter_pausa_tecnica_do_slug(meta)
+                for item_texto in blocos:
+                    resultado = self.processar_bloco_texto(
+                        item_texto,
+                        indice_visual_global
+                    )
 
-            # Metadados visuais por linha.
-            pausa_tecnica_aplicada = False
+                    linhas_exibidas_slug.extend(resultado["linhas_exibidas"])
+                    tipos_linhas_slug.extend(resultado["tipos_linhas_exibidas"])
+                    linhas_roteiro_slug.extend(resultado["linhas_roteiro"])
+                    falar_para_exibir_slug.extend(resultado["falar_para_exibir"])
 
-            for indice_local, linha_visual in enumerate(linhas_exibidas_slug):
-                indice_visual = (
-                    len(self.linhas_exibidas) + indice_local
+                    indice_visual_global = resultado["proximo_indice_visual"]
+
+                tempos_fala = self.distribuir_tempos_de_fala(
+                    linhas_roteiro_slug,
+                    meta["speaking_time"]
                 )
 
-                tipo_linha = (
-                    tipos_linhas_slug[indice_local]
-                    if indice_local < len(tipos_linhas_slug)
-                    else "fala"
-                )
+                pausa_tecnica, motivo_pausa = self.obter_pausa_tecnica_do_slug(meta)
 
-                pausa_linha = 0.0
-                motivo_linha = ""
+                pausa_tecnica_aplicada = False
 
-                # A pausa técnica é aplicada apenas uma vez por retranca,
-                # evitando duplicar tapeTime em vários comandos técnicos.
-                if (
-                    not pausa_tecnica_aplicada
-                    and pausa_tecnica > 0
-                    and tipo_linha == "pausa_tecnica"
-                ):
-                    pausa_linha = pausa_tecnica
-                    motivo_linha = motivo_pausa
-                    pausa_tecnica_aplicada = True
+                for indice_local, linha_visual in enumerate(linhas_exibidas_slug):
+                    indice_visual = (
+                        len(self.linhas_exibidas) + indice_local
+                    )
 
-                self.metadados_linhas_visuais.append(
-                    LinhaVisualMeta(
+                    tipo_linha = (
+                        tipos_linhas_slug[indice_local]
+                        if indice_local < len(tipos_linhas_slug)
+                        else "fala"
+                    )
+
+                    pausa_linha = 0.0
+                    motivo_linha = ""
+
+                    if (
+                        not pausa_tecnica_aplicada
+                        and pausa_tecnica > 0
+                        and tipo_linha == "pausa_tecnica"
+                    ):
+                        pausa_linha = pausa_tecnica
+                        motivo_linha = motivo_pausa
+                        pausa_tecnica_aplicada = True
+
+                    self.metadados_linhas_visuais.append(
+                        LinhaVisualMeta(
+                            indice_visual=indice_visual,
+                            texto_visual=linha_visual,
+                            tipo_linha=tipo_linha,
+                            titulo=meta["titulo"],
+                            pagina=meta["pagina"],
+                            item_type=meta["item_type"],
+                            ordem_slug=meta["ordem_slug"],
+                            slug_id=meta["slug_id"],
+                            speaking_time=meta["speaking_time"],
+                            tape_time=meta["tape_time"],
+                            total_time=meta["total_time"],
+                            duracao_segundos=0.0,
+                            origem_tempo="json_tecnico" if pausa_linha > 0 else "sem_tempo",
+                            pausa_tecnica_segundos=pausa_linha,
+                            motivo_pausa=motivo_linha,
+                        )
+                    )
+
+                # Segmentos faláveis.
+                for indice_local, linha_falada in enumerate(linhas_roteiro_slug):
+                    indice_visual = falar_para_exibir_slug[indice_local]
+                    texto_visual = ""
+
+                    if 0 <= indice_visual < indice_visual_global:
+                        # O índice visual já é global.
+                        # Como self.linhas_exibidas ainda não recebeu o slug,
+                        # calculamos usando a lista local quando possível.
+                        deslocamento_local = indice_visual - len(self.linhas_exibidas)
+                        if 0 <= deslocamento_local < len(linhas_exibidas_slug):
+                            texto_visual = linhas_exibidas_slug[deslocamento_local]
+
+                    if not texto_visual:
+                        texto_visual = linha_falada
+
+                    tempo_linha = (
+                        tempos_fala[indice_local]
+                        if indice_local < len(tempos_fala)
+                        else round(self.estimar_tempo_leitura(linha_falada), 2)
+                    )
+
+                    origem_tempo = (
+                        "speakingTime_json_distribuido"
+                        if meta["speaking_time"] > 0
+                        else "estimativa_por_palavras"
+                    )
+
+                    pausa_apos = 0.0
+                    motivo_segmento = ""
+
+                    # Quando não houve comando técnico visual marcado,
+                    # mas a retranca possui tapeTime, associamos a pausa
+                    # à última fala da retranca.
+                    if (
+                        pausa_tecnica > 0
+                        and not pausa_tecnica_aplicada
+                        and indice_local == len(linhas_roteiro_slug) - 1
+                    ):
+                        pausa_apos = pausa_tecnica
+                        motivo_segmento = motivo_pausa
+
+                    segmento = SegmentoRoteiro(
+                        texto_falado=linha_falada,
+                        texto_visual=texto_visual,
+                        tipo_linha="fala",
+                        indice_falado=indice_falado_global,
                         indice_visual=indice_visual,
-                        texto_visual=linha_visual,
-                        tipo_linha=tipo_linha,
+                        tempo_estimado=tempo_linha,
+                        origem_tempo=origem_tempo,
+                        apresentador=meta["apresentador"],
                         titulo=meta["titulo"],
                         pagina=meta["pagina"],
                         item_type=meta["item_type"],
@@ -503,123 +566,57 @@ class ProcessadorRoteiro:
                         speaking_time=meta["speaking_time"],
                         tape_time=meta["tape_time"],
                         total_time=meta["total_time"],
-                        duracao_segundos=0.0,
-                        origem_tempo="json_tecnico" if pausa_linha > 0 else "sem_tempo",
-                        pausa_tecnica_segundos=pausa_linha,
-                        motivo_pausa=motivo_linha,
+                        start_time=meta["start_time"],
+                        pausa_apos_segundos=pausa_apos,
+                        motivo_pausa=motivo_segmento,
                     )
-                )
 
-            # Segmentos faláveis.
-            for indice_local, linha_falada in enumerate(linhas_roteiro_slug):
-                indice_visual = falar_para_exibir_slug[indice_local]
-                texto_visual = ""
+                    self.segmentos.append(segmento)
+                    indice_falado_global += 1
 
-                if 0 <= indice_visual < indice_visual_global:
-                    # O índice visual já é global.
-                    # Como self.linhas_exibidas ainda não recebeu o slug,
-                    # calculamos usando a lista local quando possível.
-                    deslocamento_local = indice_visual - len(self.linhas_exibidas)
-                    if 0 <= deslocamento_local < len(linhas_exibidas_slug):
-                        texto_visual = linhas_exibidas_slug[deslocamento_local]
+                    # Atualiza a duração no metadado visual correspondente.
+                    for meta_visual in self.metadados_linhas_visuais:
+                        if meta_visual.indice_visual == indice_visual:
+                            meta_visual.duracao_segundos = tempo_linha
+                            meta_visual.origem_tempo = origem_tempo
+                            break
 
-                if not texto_visual:
-                    texto_visual = linha_falada
+                self.linhas_exibidas.extend(linhas_exibidas_slug)
+                self.tipos_linhas_exibidas.extend(tipos_linhas_slug)
+                self.linhas_roteiro.extend(linhas_roteiro_slug)
+                self.falar_para_exibir.extend(falar_para_exibir_slug)
 
-                tempo_linha = (
-                    tempos_fala[indice_local]
-                    if indice_local < len(tempos_fala)
-                    else round(self.estimar_tempo_leitura(linha_falada), 2)
-                )
+            print("\n========== DIAGNÓSTICO DO PARSER ==========")
+            print(f"Linhas exibidas : {len(self.linhas_exibidas)}")
+            print(f"Tipos visuais   : {len(self.tipos_linhas_exibidas)}")
+            print(f"Linhas faláveis : {len(self.linhas_roteiro)}")
+            print(f"Mapeamentos     : {len(self.falar_para_exibir)}")
+            print(f"Segmentos       : {len(self.segmentos)}")
 
-                origem_tempo = (
-                    "speakingTime_json_distribuido"
-                    if meta["speaking_time"] > 0
-                    else "estimativa_por_palavras"
-                )
-
-                pausa_apos = 0.0
-                motivo_segmento = ""
-
-                # Quando não houve comando técnico visual marcado,
-                # mas a retranca possui tapeTime, associamos a pausa
-                # à última fala da retranca.
-                if (
-                    pausa_tecnica > 0
-                    and not pausa_tecnica_aplicada
-                    and indice_local == len(linhas_roteiro_slug) - 1
-                ):
-                    pausa_apos = pausa_tecnica
-                    motivo_segmento = motivo_pausa
-
-                segmento = SegmentoRoteiro(
-                    texto_falado=linha_falada,
-                    texto_visual=texto_visual,
-                    tipo_linha="fala",
-                    indice_falado=indice_falado_global,
-                    indice_visual=indice_visual,
-                    tempo_estimado=tempo_linha,
-                    origem_tempo=origem_tempo,
-                    apresentador=meta["apresentador"],
-                    titulo=meta["titulo"],
-                    pagina=meta["pagina"],
-                    item_type=meta["item_type"],
-                    ordem_slug=meta["ordem_slug"],
-                    slug_id=meta["slug_id"],
-                    speaking_time=meta["speaking_time"],
-                    tape_time=meta["tape_time"],
-                    total_time=meta["total_time"],
-                    start_time=meta["start_time"],
-                    pausa_apos_segundos=pausa_apos,
-                    motivo_pausa=motivo_segmento,
-                )
-
-                self.segmentos.append(segmento)
-                indice_falado_global += 1
-
-                # Atualiza a duração no metadado visual correspondente.
-                for meta_visual in self.metadados_linhas_visuais:
-                    if meta_visual.indice_visual == indice_visual:
-                        meta_visual.duracao_segundos = tempo_linha
-                        meta_visual.origem_tempo = origem_tempo
-                        break
-
-            self.linhas_exibidas.extend(linhas_exibidas_slug)
-            self.tipos_linhas_exibidas.extend(tipos_linhas_slug)
-            self.linhas_roteiro.extend(linhas_roteiro_slug)
-            self.falar_para_exibir.extend(falar_para_exibir_slug)
-
-        print("\n========== DIAGNÓSTICO DO PARSER ==========")
-        print(f"Linhas exibidas : {len(self.linhas_exibidas)}")
-        print(f"Tipos visuais   : {len(self.tipos_linhas_exibidas)}")
-        print(f"Linhas faláveis : {len(self.linhas_roteiro)}")
-        print(f"Mapeamentos     : {len(self.falar_para_exibir)}")
-        print(f"Segmentos       : {len(self.segmentos)}")
-
-        tempo_fala_json = sum(
-            segmento.tempo_estimado or 0.0
-            for segmento in self.segmentos
-        )
-
-        tempo_pausa_json = sum(
-            (linha.pausa_tecnica_segundos or 0.0)
-            for linha in self.metadados_linhas_visuais
-        ) + sum(
-            (segmento.pausa_apos_segundos or 0.0)
-            for segmento in self.segmentos
-        )
-
-        print(f"Tempo fala calculado (s) : {round(tempo_fala_json, 2)}")
-        print(f"Tempo técnico/VT (s)     : {round(tempo_pausa_json, 2)}")
-
-        print("\nPrimeiros segmentos com tempo:")
-        for indice, segmento in enumerate(self.segmentos[:10]):
-            print(
-                f"{indice + 1}. {segmento.tempo_estimado}s "
-                f"[{segmento.origem_tempo}] - {segmento.texto_falado[:60]}"
+            tempo_fala_json = sum(
+                segmento.tempo_estimado or 0.0
+                for segmento in self.segmentos
             )
 
-        print("===========================================\n")
+            tempo_pausa_json = sum(
+                (linha.pausa_tecnica_segundos or 0.0)
+                for linha in self.metadados_linhas_visuais
+            ) + sum(
+                (segmento.pausa_apos_segundos or 0.0)
+                for segmento in self.segmentos
+            )
+
+            print(f"Tempo fala calculado (s) : {round(tempo_fala_json, 2)}")
+            print(f"Tempo técnico/VT (s)     : {round(tempo_pausa_json, 2)}")
+
+            print("\nPrimeiros segmentos com tempo:")
+            for indice, segmento in enumerate(self.segmentos[:10]):
+                print(
+                    f"{indice + 1}. {segmento.tempo_estimado}s "
+                    f"[{segmento.origem_tempo}] - {segmento.texto_falado[:60]}"
+                )
+
+            print("===========================================\n")
 
         return (
             self.linhas_roteiro,

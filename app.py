@@ -243,6 +243,48 @@ def calcular_configuracao_rolagem():
     }
 
 
+def obter_configuracao_tp_display():
+    """
+    Retorna a configuração do teleprompter (tela 4:3) para o frontend.
+    """
+    tp_config = CONFIG.get("tp_display", {})
+    return {
+        "maxWidthVw": tp_config.get("max_width_vw", 90),
+        "maxHeightVh": tp_config.get("max_height_vh", 60),
+        "aspectRatio": tp_config.get("aspect_ratio", "4/3"),
+    }
+
+
+def emitir_configuracao_tp_display():
+    """
+    Emite a configuração do teleprompter para o frontend.
+    """
+    config = obter_configuracao_tp_display()
+    socketio.emit("config_tp_display", config)
+    print(f"[SOCKET] Configuração TP Display enviada: {config}")
+
+
+def obter_dispositivos_audio():
+    """
+    Retorna a lista de dispositivos de áudio disponíveis.
+    """
+    try:
+        dispositivos = motor_audio.listar_dispositivos()
+        return dispositivos
+    except Exception as e:
+        print(f"[SOCKET] Erro ao listar dispositivos de áudio: {e}")
+        return []
+
+
+def emitir_dispositivos_audio():
+    """
+    Emite a lista de dispositivos de áudio para o frontend.
+    """
+    dispositivos = obter_dispositivos_audio()
+    socketio.emit("dispositivos_audio", {"dispositivos": dispositivos})
+    print(f"[SOCKET] Dispositivos de áudio enviados: {len(dispositivos)} encontrados")
+
+
 def emitir_status():
     # Envia o estado atual do motor para o frontend.
     socketio.emit(
@@ -464,6 +506,8 @@ def cliente_conectado():
     RegistradorEventos.cliente_conectado()
     emitir_roteiro_para_frontend()
     emitir_status()
+    emitir_configuracao_tp_display()
+    emitir_dispositivos_audio()
 
 
 @socketio.on("iniciar_motor")
@@ -567,6 +611,75 @@ def alternar_pausa():
     emitir_status()
 
 
+@socketio.on("solicitar_config_tp_display")
+def reenviar_configuracao_tp_display():
+    """
+    Permite ao frontend pedir novamente a configuração do TP display.
+    """
+    emitir_configuracao_tp_display()
+
+
+@socketio.on("selecionar_dispositivo_audio")
+def selecionar_dispositivo_audio(dados):
+    """
+    Seleciona um dispositivo de áudio específico e reinicia o loop de áudio.
+    """
+    if not dados or "device_index" not in dados:
+        print("[SOCKET] Selecionar dispositivo: dados inválidos")
+        return
+
+    device_index = dados["device_index"]
+    if device_index == "auto" or device_index is None:
+        device_index = None
+        CONFIG["audio"]["device_index"] = None
+        print("[SOCKET] Dispositivo de áudio definido para auto-seleção")
+    else:
+        try:
+            device_index = int(device_index)
+            CONFIG["audio"]["device_index"] = device_index
+            print(f"[SOCKET] Dispositivo de áudio selecionado: index {device_index}")
+        except (ValueError, TypeError):
+            print("[SOCKET] Device index inválido")
+            return
+
+    # Reinicia o motor de áudio com o novo dispositivo
+    if estado.correndo and estado.proc_audio:
+        print("[SOCKET] Reiniciando motor de áudio com novo dispositivo...")
+        estado.mudar_estado("RECONECTANDO_AUDIO")
+        emitir_status()
+        emitir_estado_rolagem("RECONECTANDO_AUDIO", "Trocando dispositivo de áudio")
+
+        # Para o loop atual
+        estado.correndo = False
+
+        # Aguarda um pouco e reinicia
+        def reiniciar_motor():
+            import time
+            time.sleep(0.5)
+            try:
+                motor_audio.fechar_microfone()
+                estado.mudar_estado("AUTOMATICO")
+                estado.correndo = True
+                iniciar_motor_se_necessario()
+                emitir_status()
+                emitir_estado_rolagem("AUTOMATICO", "Dispositivo de áudio alterado")
+            except Exception as e:
+                print(f"[SOCKET] Erro ao reiniciar motor: {e}")
+                estado.mudar_estado("FALHA")
+                emitir_status()
+                emitir_estado_rolagem("FALHA", f"Erro ao trocar dispositivo: {e}")
+
+        socketio.start_background_task(reiniciar_motor)
+
+
+@socketio.on("solicitar_dispositivos_audio")
+def reenviar_dispositivos_audio():
+    """
+    Permite ao frontend pedir novamente a lista de dispositivos de áudio.
+    """
+    emitir_dispositivos_audio()
+
+
 # ============================================================
 # 12. START DO SERVIDOR
 # ============================================================
@@ -578,5 +691,6 @@ if __name__ == "__main__":
         app,
         debug=True,
         port=5500,
-        use_reloader=False
+        use_reloader=False,
+        allow_unsafe_werkzeug=True
     )

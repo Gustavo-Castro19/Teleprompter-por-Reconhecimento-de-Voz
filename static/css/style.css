@@ -9,6 +9,10 @@
     --winplus-blue: #0076ff;
     --text-white: #ffffff;
     --text-dark: #1b2836;
+
+    /* Teleprompter 4:3 Display Configuration */
+    --tp-max-width-vw: 90vw;
+    --tp-max-height-vh: 60vh;
 }
 
 * {
@@ -383,9 +387,9 @@ body {
 .winplus-box-4x3 {
     position: relative;
     width: 100%;
-    max-width: 720px;
+    max-width: var(--tp-max-width-vw);
     aspect-ratio: 4 / 3;
-    max-height: 60vh;
+    max-height: var(--tp-max-height-vh);
     background: #000000;
     border: 2px solid #4c647d;
     border-radius: 6px;
