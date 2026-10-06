@@ -480,12 +480,7 @@ def iniciar_motor_se_necessario():
 
 @app.route("/")
 def inicio():
-    return redirect("/comando")
-
-
-@app.route("/comando")
-def tela_comando():
-    return render_template("comando.html")
+    return render_template("index.html")
 
 
 @app.route("/tp")
