@@ -1,17 +1,22 @@
 // ============================================================
-// TELEPROMPTER SQUAD 29 - FRONTEND CHAVEADO WINPLUS
+// TELEPROMPTER SQUAD 29 - FRONTEND (HYBRID SPEECH)
 // ============================================================
-// Esta versão usa os tempos do JSON/iNEWS enviados pelo backend:
-// - speakingTime para fala;
-// - tapeTime para VT/link/imagens;
-// - totalTime para blocos sem fala;
-// - pausa em improviso;
-// - retomada quando o backend reconhece a volta ao roteiro.
+// Reconhecimento híbrido:
+//  1. Web Speech API (primário, no navegador) - online
+//  2. Vosk (fallback, no servidor via WebSocket) - offline
+//
+// Events SocketIO novos:
+//   speech_start {mode, language}  → inicia sessão
+//   speech_stop {}                 → para sessão
+//   speech_result {text, isFinal, source, confidence}  ← enviado pelo frontend
+//   speech_audio {audio: base64}                     ← enviado pelo frontend (chunk Vosk)
+//   speech_ready {mode, ready}        ← recebido do backend
+//   speech_error {error, fallback}    ← recebido do backend
 // ============================================================
 
 const socket = io();
 
-// Elementos Principais
+// === Elementos principais ===
 const editor = document.getElementById("editor");
 const display = document.getElementById("display");
 const mainToolbar = document.getElementById("main-toolbar") || document.getElementById("top-toolbar");
@@ -19,7 +24,6 @@ const sidePanel = document.getElementById("side-speed-panel");
 const btnRestore = document.getElementById("btn-restore");
 const btnClose = document.getElementById("btn-close-toolbar");
 
-// Compatibilidade com nomes usados nas duas telas.
 const mirrorBtn =
     document.getElementById("invertBtn") ||
     document.getElementById("mirrorBtn") ||
@@ -46,68 +50,47 @@ const btnNext =
     document.getElementById("btn-next-local");
 
 const btnPlayLocal = document.getElementById("btn-play-local");
-
 const scrollToggleBtn = document.getElementById("scrollToggleBtn");
 
-// Chaveadores WinPlus
 const winplusToggleBtn =
     document.getElementById("winplusToggleBtn") ||
     document.getElementById("btn-winplus-toggle");
 
 const appBody = document.getElementById("app-body");
 
-// Estado Local
+// === Estado local ===
 let linhasRoteiro = [];
 let indiceAtualVisual = 0;
-
-// Metadados enviados pelo backend
 let segmentosRoteiro = [];
 let metadadosLinhas = [];
 let configuracaoRolagem = null;
 
-// Cada tela precisa manter sua própria posição-base.
 let deslocamentoBaseEditor = 0;
 let deslocamentoBaseDisplay = 0;
-
 let alvoDeslocamentoBaseEditor = 0;
 let alvoDeslocamentoBaseDisplay = 0;
 let suavidadeSincronizacao = 0.10;
-
 let deslocamentoManual = 0;
 let motorPausado = true;
 
-// Ponto fixo de leitura.
-// A seta e a frase reconhecida devem apontar para esta mesma região.
 const PONTO_LEITURA_DISPLAY = 0.51;
-
-// Esquerda em tela cheia
 const PONTO_LEITURA_EDITOR_TELA_CHEIA = 0.50;
-
-// Esquerda no modo dividido
 const PONTO_LEITURA_EDITOR_DIVIDIDO = 0.50;
 
 const FATOR_ROLAGEM_EDITOR = 1;
 const FATOR_ROLAGEM_DISPLAY = 1;
 
-// Controle da rolagem contínua automática
 let rolagemContinuaAtiva = false;
-
-// Valor manual do operador.
-// O tempo do JSON calcula a velocidade base; o slider funciona como ajuste fino.
 let fatorManualVelocidade = Number(localStorage.getItem("tp_velocidade") || 1);
-
 let ultimoFrame = null;
 let posicaoRolagemContinua = 0;
 let comandoManualPendente = false;
 let suavizandoPorFala = false;
 
-// Controle de pausa técnica/improviso
 let rolagemBloqueadaPorSistema = false;
 let motivoBloqueioRolagem = "";
 let pausaTecnicaAte = 0;
 
-// Controle da rolagem assistida por voz.
-// O JSON define a velocidade base, mas a fala real ajusta o ritmo.
 let estadoVozAtual = "aguardando";
 let ultimoMatchVozMs = Date.now();
 let velocidadeVozFatorAtual = 1.0;
@@ -115,9 +98,8 @@ let velocidadeVozFatorAlvo = 1.0;
 let rolagemInterrompidaManualmente = false;
 
 const TEMPO_SEM_MATCH_IMPROVISO_MS = 2200;
-const SUAVIDADE_VELOCIDADE_VOZ = 0.08;
+const SUAUIDADE_VELOCIDADE_VOZ = 0.08;
 
-// Controle para calcular velocidade de cada trecho
 let tempoInicioLinhaAtual = null;
 let duracaoLinhaAtualMs = 0;
 
@@ -131,17 +113,271 @@ let estiloTexto = {
 };
 
 let canal = null;
-try { canal = new BroadcastChannel("tp_channel"); } catch (erro) { canal = null; }
+try { canal = new BroadcastChannel("tp_channel"); } catch (e) { canal = null; }
 
 // ============================================================
-// UTILITÁRIOS
+// Hybrid Speech Recognition (Web Speech API + Vosk fallback)
+// ============================================================
+
+const SPEECH_MODE = {
+    WEB: "web",
+    VOSK: "vosk",
+};
+
+let speechMode = SPEECH_MODE.WEB;
+let speechRecognition = null;
+let speechRecognitionSupported = false;
+let speechReady = false;
+let mediaStream = null;
+let mediaRecorder = null;
+let mediaRecorderChunks = [];
+let isSpeaking = false;
+
+// Check Web Speech API availability
+if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+    speechRecognitionSupported = true;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    speechRecognition = new SpeechRecognition();
+    speechRecognition.continuous = true;
+    speechRecognition.interimResults = true;
+    speechRecognition.lang = "pt-BR";
+}
+
+// Web Speech API event handlers
+if (speechRecognition) {
+    speechRecognition.onresult = (event) => {
+        let interimTranscript = "";
+        let finalTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            const confidence = event.results[i][0].confidence || 0;
+
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript;
+                socket.emit("speech_result", {
+                    text: finalTranscript,
+                    isFinal: true,
+                    source: "web",
+                    confidence: confidence,
+                });
+            } else {
+                interimTranscript += transcript;
+                socket.emit("speech_result", {
+                    text: interimTranscript,
+                    isFinal: false,
+                    source: "web",
+                    confidence: 0,
+                });
+            }
+        }
+
+        console.log("Web Speech result:", interimTranscript || finalTranscript);
+    };
+
+    speechRecognition.onerror = (event) => {
+        console.error("Web Speech error:", event.error, event.message);
+
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+            console.warn("Web Speech permission denied - switching to Vosk fallback");
+            switchToVoskMode();
+            return;
+        }
+
+        // Restart recognition if server error
+        if (event.error === "network" || event.error === "server-error") {
+            console.warn("Web Speech network error - trying restart");
+            setTimeout(() => {
+                if (isSpeaking) reconnectSpeech();
+            }, 1000);
+        }
+    };
+
+    speechRecognition.onend = () => {
+        console.log("Web Speech recognition ended");
+        if (isSpeaking && speechMode === SPEECH_MODE.WEB) {
+            // Auto-restart if still active
+            setTimeout(() => {
+                if (isSpeaking) reconnectSpeech();
+            }, 50);
+        }
+    };
+}
+
+function startWebSpeech() {
+    if (!speechRecognitionSupported) {
+        console.warn("Web Speech not supported - falling back to Vosk");
+        switchToVoskMode();
+        return false;
+    }
+
+    try {
+        socket.emit("speech_start", { mode: "web", language: "pt-BR" });
+        speechRecognition.start();
+        isSpeaking = true;
+        console.log("Web Speech recognition started");
+        return true;
+    } catch (e) {
+        console.error("Failed to start Web Speech:", e);
+        return false;
+    }
+}
+
+function stopWebSpeech() {
+    isSpeaking = false;
+    try {
+        if (speechRecognition) {
+            speechRecognition.stop();
+        }
+    } catch (e) {
+        console.error("Failed to stop Web Speech:", e);
+    }
+    socket.emit("speech_stop");
+}
+
+function reconnectSpeech() {
+    if (speechMode === SPEECH_MODE.WEB && speechRecognition) {
+        try {
+            speechRecognition.stop();
+        } catch (e) {
+            // ignore
+        }
+        setTimeout(() => {
+            if (isSpeaking) {
+                try {
+                    speechRecognition.start();
+                } catch (e) {
+                    console.error("Failed to restart Web Speech:", e);
+                }
+            }
+        }, 50);
+    }
+}
+
+// === Vosk fallback (audio stream to server) ===
+
+function switchToVoskMode() {
+    if (speechMode === SPEECH_MODE.VOSK) return; // Already in Vosk mode
+    console.warn("Switching to Vosk fallback mode");
+
+    // Stop Web Speech
+    isSpeaking = false;
+    try {
+        if (speechRecognition) speechRecognition.stop();
+    } catch (e) {
+        // ignore
+    }
+
+    speechMode = SPEECH_MODE.VOSK;
+    socket.emit("speech_start", { mode: "vosk", language: "pt-BR" });
+
+    // Request microphone access for Vosk fallback
+    navigator.mediaDevices
+        .getUserMedia({ audio: true })
+        .then((stream) => {
+            mediaStream = stream;
+            mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const base64Audio = reader.result.split(",")[1];
+                        socket.emit("speech_audio", { audio: base64Audio });
+                    };
+                    reader.readAsDataURL(event.data);
+                }
+            };
+            mediaRecorder.onstart = () => {
+                console.log("Vosk audio recording started");
+                isSpeaking = true;
+            };
+            mediaRecorder.onstop = () => {
+                console.log("Vosk audio recording stopped");
+            };
+            showVoskToast("Modo offline Vosk ativado");
+            startVoskRecording();
+        })
+        .catch((err) => {
+            console.error("Failed to get microphone:", err);
+            showVoskToast("Erro ao acessar microfone para Vosk");
+        });
+}
+
+function startVoskRecording() {
+    if (!mediaRecorder || mediaRecorder.state === "recording") return;
+    mediaRecorder.start(500); // Capture 500ms chunks
+    isSpeaking = true;
+}
+
+function stopVoskRecording() {
+    isSpeaking = false;
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+    }
+    if (mediaStream) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+        mediaStream = null;
+        mediaRecorder = null;
+    }
+    socket.emit("speech_stop");
+}
+
+function showVoskToast(msg) {
+    if (typeof mostrarToast === "function") {
+        mostrarToast(msg, "info");
+    } else {
+        console.log(msg);
+    }
+}
+
+// Handle speech ready/error from backend
+socket.on("speech_ready", (dados) => {
+    console.log("Speech ready:", dados);
+    speechReady = true;
+});
+
+socket.on("speech_error", (dados) => {
+    console.warn("Speech error from backend:", dados);
+    if (dados.fallback) {
+        // Backend Vosk not available - switch back to Web speech
+        speechMode = SPEECH_MODE.WEB;
+        showVoskToast(dados.error || "Vosk indisponível");
+    }
+});
+
+// Public interface
+function startSpeechRecognition() {
+    if (speechRecognitionSupported) {
+        speechMode = SPEECH_MODE.WEB;
+        return startWebSpeech();
+    } else {
+        speechMode = SPEECH_MODE.VOSK;
+        socket.emit("speech_start", { mode: "vosk", language: "pt-BR" });
+        return false; // Vosk recording needs separate start
+    }
+}
+
+function stopSpeechRecognition() {
+    if (speechMode === SPEECH_MODE.WEB) {
+        stopWebSpeech();
+    } else {
+        stopVoskRecording();
+    }
+}
+
+// Auto-start speech when motor starts
+socket.on("iniciar_motor", () => {
+    // handled separately
+});
+
+// ============================================================
+// Utilitários e scroll (mantém funções do script.js original)
 // ============================================================
 
 function obterContainerTexto() {
     if (appBody && appBody.classList.contains("winplus-active")) {
         return display || editor;
     }
-
     return editor || display;
 }
 
@@ -160,78 +396,41 @@ function salvarPreferencias() {
 
 function publicarEstilo() {
     salvarPreferencias();
-
-    if (canal) {
-        canal.postMessage({ tipo: "estilo", estilo: estiloTexto });
-    }
+    if (canal) canal.postMessage({ tipo: "estilo", estilo: estiloTexto });
 }
 
 function aplicarEstiloTexto() {
     obterContainersTexto().forEach(container => {
         container.style.fontFamily = estiloTexto.fonte;
-
-        if (container === editor) {
-            container.style.fontSize = `${estiloTexto.tamanho}px`;
-        }
-
+        if (container === editor) container.style.fontSize = `${estiloTexto.tamanho}px`;
         container.style.fontWeight = estiloTexto.negrito ? "bold" : "normal";
         container.style.fontStyle = estiloTexto.italico ? "italic" : "normal";
         container.style.textDecoration = estiloTexto.sublinhado ? "underline" : "none";
         container.style.setProperty("--tp-scale-x", estiloTexto.espelhado ? "-1" : "1");
     });
-
     if (fontName) fontName.value = estiloTexto.fonte;
     if (fontSize) fontSize.value = String(estiloTexto.tamanho);
     if (btnBold) btnBold.classList.toggle("active-format", estiloTexto.negrito);
     if (btnItalic) btnItalic.classList.toggle("active-format", estiloTexto.italico);
     if (btnUnderline) btnUnderline.classList.toggle("active-format", estiloTexto.sublinhado);
     if (mirrorBtn) mirrorBtn.classList.toggle("active", estiloTexto.espelhado);
-
     aplicarTransformacao();
-
-    if (typeof indiceAtualVisual !== "undefined") {
-        destacarLinha(indiceAtualVisual);
-    }
+    if (typeof indiceAtualVisual !== "undefined") destacarLinha(indiceAtualVisual);
 }
 
 function obterPontoLeitura(container) {
-    if (container === display) {
-        return PONTO_LEITURA_DISPLAY;
-    }
-
-    if (appBody && appBody.classList.contains("winplus-active")) {
-        return PONTO_LEITURA_EDITOR_DIVIDIDO;
-    }
-
+    if (container === display) return PONTO_LEITURA_DISPLAY;
+    if (appBody && appBody.classList.contains("winplus-active")) return PONTO_LEITURA_EDITOR_DIVIDIDO;
     return PONTO_LEITURA_EDITOR_TELA_CHEIA;
 }
 
 function aplicarTransformacao() {
     obterContainersTexto().forEach(container => {
-        const deslocamentoBaseContainer =
-            container === editor
-                ? deslocamentoBaseEditor
-                : deslocamentoBaseDisplay;
-
-        const fatorRolagem =
-            container === display
-                ? FATOR_ROLAGEM_DISPLAY
-                : FATOR_ROLAGEM_EDITOR;
-
-        const deslocamentoTotal =
-            deslocamentoBaseContainer +
-            deslocamentoManual +
-            (posicaoRolagemContinua * fatorRolagem);
-
-        container.style.setProperty(
-            "--tp-offset-y",
-            `${deslocamentoTotal}px`
-        );
-
-        container.style.setProperty(
-            "--tp-scale-x",
-            estiloTexto.espelhado ? "-1" : "1"
-        );
+        const deslocamentoBaseContainer = container === editor ? deslocamentoBaseEditor : deslocamentoBaseDisplay;
+        const fatorRolagem = container === display ? FATOR_ROLAGEM_DISPLAY : FATOR_ROLAGEM_EDITOR;
+        const deslocamentoTotal = deslocamentoBaseContainer + deslocamentoManual + (posicaoRolagemContinua * fatorRolagem);
+        container.style.setProperty("--tp-offset-y", `${deslocamentoTotal}px`);
+        container.style.setProperty("--tp-scale-x", estiloTexto.espelhado ? "-1" : "1");
     });
 }
 
@@ -239,58 +438,33 @@ function resetarDeslocamentosVisuais() {
     deslocamentoManual = 0;
     posicaoRolagemContinua = 0;
     ultimoFrame = null;
-
     aplicarTransformacao();
 }
 
-// ============================================================
-// TEMPOS / METADADOS
-// ============================================================
-
+// Metadados
 function obterMetaLinhaVisual(indiceVisual) {
     return metadadosLinhas.find(meta => meta.indiceVisual === indiceVisual) || null;
 }
-
 function obterSegmentoPorVisual(indiceVisual) {
     return segmentosRoteiro.find(seg => seg.indiceVisual === indiceVisual) || null;
 }
-
 function obterDuracaoLinhaAtualSegundos() {
     const segmento = obterSegmentoPorVisual(indiceAtualVisual);
     const meta = obterMetaLinhaVisual(indiceAtualVisual);
-
-    if (segmento && Number(segmento.tempoEstimadoSegundos) > 0) {
-        return Number(segmento.tempoEstimadoSegundos);
-    }
-
-    if (meta && Number(meta.duracaoSegundos) > 0) {
-        return Number(meta.duracaoSegundos);
-    }
-
-    // Fallback seguro para linhas sem tempo oficial.
+    if (segmento && Number(segmento.tempoEstimadoSegundos) > 0) return Number(segmento.tempoEstimadoSegundos);
+    if (meta && Number(meta.duracaoSegundos) > 0) return Number(meta.duracaoSegundos);
     return 2.0;
 }
 
 function obterDistanciaAteProximaLinha(container) {
     if (!container) return 80;
-
-    const linhaAtual = container.querySelector(
-        `.linha-roteiro[data-index="${indiceAtualVisual}"], .comentario[data-index="${indiceAtualVisual}"]`
-    );
-
-    const proximaLinha = container.querySelector(
-        `.linha-roteiro[data-index="${indiceAtualVisual + 1}"], .comentario[data-index="${indiceAtualVisual + 1}"]`
-    );
-
+    const linhaAtual = container.querySelector(`.linha-roteiro[data-index="${indiceAtualVisual}"], .comentario[data-index="${indiceAtualVisual}"]`);
+    const proximaLinha = container.querySelector(`.linha-roteiro[data-index="${indiceAtualVisual + 1}"], .comentario[data-index="${indiceAtualVisual + 1}"]`);
     if (linhaAtual && proximaLinha) {
         const distancia = Math.abs(proximaLinha.offsetTop - linhaAtual.offsetTop);
         return Math.max(distancia, 40);
     }
-
-    if (linhaAtual) {
-        return Math.max(linhaAtual.clientHeight + 18, 40);
-    }
-
+    if (linhaAtual) return Math.max(linhaAtual.clientHeight + 18, 40);
     return 80;
 }
 
@@ -298,9 +472,7 @@ function calcularVelocidadePxPorMs() {
     const container = obterContainerTexto();
     const duracaoSegundos = obterDuracaoLinhaAtualSegundos();
     const distanciaPx = obterDistanciaAteProximaLinha(container);
-
     const velocidadeBase = distanciaPx / Math.max(duracaoSegundos * 1000, 1);
-
     return velocidadeBase * fatorManualVelocidade * velocidadeVozFatorAtual;
 }
 
@@ -311,53 +483,32 @@ function iniciarTemporizadorDaLinha() {
 
 function iniciarPausaTecnica(segundos, motivo) {
     const duracao = Number(segundos || 0);
-
-    if (duracao <= 0) {
-        return;
-    }
-
+    if (duracao <= 0) return;
     rolagemBloqueadaPorSistema = true;
     motivoBloqueioRolagem = motivo || "Pausa técnica";
     pausaTecnicaAte = performance.now() + (duracao * 1000);
-
-    console.log(
-        `Rolagem pausada por ${duracao}s. Motivo: ${motivoBloqueioRolagem}`
-    );
+    console.log(`Rolagem pausada por ${duracao}s. Motivo: ${motivoBloqueioRolagem}`);
 }
 
 function verificarFimPausaTecnica(timestamp) {
-    if (!rolagemBloqueadaPorSistema) {
-        return;
-    }
-
-    if (motivoBloqueioRolagem === "IMPROVISO") {
-        // Improviso só termina quando o backend reconhecer retorno ao roteiro.
-        return;
-    }
-
+    if (!rolagemBloqueadaPorSistema) return;
+    if (motivoBloqueioRolagem === "IMPROVISO") return;
     if (pausaTecnicaAte > 0 && timestamp >= pausaTecnicaAte) {
         rolagemBloqueadaPorSistema = false;
         motivoBloqueioRolagem = "";
         pausaTecnicaAte = 0;
-
         console.log("Pausa técnica encerrada. Rolagem liberada.");
     }
 }
 
-// ============================================================
-// RENDERIZAÇÃO
-// ============================================================
-
+// Renderização
 function renderizarRoteiro(linhas) {
     obterContainersTexto().forEach(container => {
         container.innerHTML = "";
-
         linhas.forEach((linha, indice) => {
             const texto = String(linha || "").trim();
             const meta = obterMetaLinhaVisual(indice);
-
             const divLinha = document.createElement("div");
-
             if (
                 (meta && (meta.tipoLinha === "tecnico" || meta.tipoLinha === "pausa_tecnica" || meta.tipoLinha === "separador")) ||
                 (texto.startsWith("{{") && texto.endsWith("}}"))
@@ -366,74 +517,50 @@ function renderizarRoteiro(linhas) {
             } else {
                 divLinha.classList.add("linha-roteiro");
             }
-
             divLinha.classList.add("linha-roteiro");
             divLinha.dataset.index = indice;
-
             if (meta) {
                 divLinha.dataset.tipoLinha = meta.tipoLinha || "fala";
                 divLinha.dataset.duracao = meta.duracaoSegundos || 0;
                 divLinha.dataset.pausa = meta.pausaTecnicaSegundos || 0;
                 divLinha.dataset.titulo = meta.titulo || "";
             }
-
             divLinha.textContent = texto;
             container.appendChild(divLinha);
         });
     });
-
     aplicarEstiloTexto();
 }
 
 function destacarLinha(indice) {
     obterContainersTexto().forEach(container => {
         const linhas = container.querySelectorAll(".linha-roteiro, .comentario");
-
-        linhas.forEach(linha => {
-            linha.classList.remove("linha-atual");
-        });
-
+        linhas.forEach(linha => linha.classList.remove("linha-atual"));
         const linhaAtual = container.querySelector(
             `.linha-roteiro[data-index="${indice}"], .comentario[data-index="${indice}"]`
         );
-
         if (!linhaAtual) return;
-
         linhaAtual.classList.add("linha-atual");
-
         const area = container.parentElement;
         if (!area) return;
-
         const posicaoLinha = linhaAtual.offsetTop;
         const alturaLinha = linhaAtual.clientHeight;
         const pontoLeitura = area.clientHeight * obterPontoLeitura(container);
-
-        const novoDeslocamentoBase =
-            pontoLeitura - posicaoLinha - (alturaLinha / 2);
-
+        const novoDeslocamentoBase = pontoLeitura - posicaoLinha - (alturaLinha / 2);
         if (container === editor) {
             alvoDeslocamentoBaseEditor = novoDeslocamentoBase;
         } else {
             alvoDeslocamentoBaseDisplay = novoDeslocamentoBase;
         }
     });
-
     aplicarTransformacao();
 }
 
 function sincronizarTeleprompter(indice, opcoes = {}) {
     indiceAtualVisual = indice;
-
     const preservarRolagem = opcoes.preservarRolagem === true;
-
-    // Quando o comando vem do backend/NEXT/PREV, zeramos a rolagem acumulada.
-    // Quando é só troca de tela, preservamos para não reiniciar visualmente.
-    if (!preservarRolagem) {
-        posicaoRolagemContinua = 0;
-    }
-
+    if (!preservarRolagem) posicaoRolagemContinua = 0;
     destacarLinha(indiceAtualVisual);
-
     if (!preservarRolagem) {
         velocidadeVozFatorAlvo = 1.0;
         iniciarTemporizadorDaLinha();
@@ -442,16 +569,12 @@ function sincronizarTeleprompter(indice, opcoes = {}) {
 
 function sincronizarTeleprompterImediato(indice) {
     indiceAtualVisual = indice;
-
     posicaoRolagemContinua = 0;
     deslocamentoManual = 0;
     ultimoFrame = null;
-
     destacarLinha(indiceAtualVisual);
-
     deslocamentoBaseEditor = alvoDeslocamentoBaseEditor;
     deslocamentoBaseDisplay = alvoDeslocamentoBaseDisplay;
-
     aplicarTransformacao();
     iniciarTemporizadorDaLinha();
 }
@@ -459,92 +582,36 @@ function sincronizarTeleprompterImediato(indice) {
 function absorverRolagemContinuaNaBase() {
     deslocamentoBaseEditor += posicaoRolagemContinua * FATOR_ROLAGEM_EDITOR;
     deslocamentoBaseDisplay += posicaoRolagemContinua * FATOR_ROLAGEM_DISPLAY;
-
     alvoDeslocamentoBaseEditor += posicaoRolagemContinua * FATOR_ROLAGEM_EDITOR;
     alvoDeslocamentoBaseDisplay += posicaoRolagemContinua * FATOR_ROLAGEM_DISPLAY;
-
     posicaoRolagemContinua = 0;
     deslocamentoManual = 0;
     ultimoFrame = null;
 }
 
 // ============================================================
-// ROLAGEM ASSISTIDA POR VOZ
+// Voz assistida
 // ============================================================
 
 function calcularFatorDeVoz(dados) {
-    /*
-        Compara o progresso real da fala com o progresso esperado
-        pelo tempo do JSON.
-
-        Exemplo:
-        - JSON espera 10s para a linha;
-        - depois de 3s, o esperado seria 30% da linha;
-        - se a cobertura da fala já está em 70%, a pessoa falou rápido;
-        - se a cobertura está em 10%, a pessoa falou devagar.
-    */
-
     const progresso = Number(dados.progressoEstimado || 0);
     const score = Number(dados.score || 0);
-
+    if (!tempoInicioLinhaAtual) return 1.0;
     const duracaoSegundos = obterDuracaoLinhaAtualSegundos();
-
-    if (!tempoInicioLinhaAtual || duracaoSegundos <= 0) {
-        return 1.0;
-    }
-
-    const tempoDecorridoSegundos =
-        (performance.now() - tempoInicioLinhaAtual) / 1000;
-
-    const progressoEsperado = Math.max(
-        0,
-        Math.min(tempoDecorridoSegundos / duracaoSegundos, 1)
-    );
-
+    if (duracaoSegundos <= 0) return 1.0;
+    const tempoDecorrido = (performance.now() - tempoInicioLinhaAtual) / 1000;
+    const progressoEsperado = Math.max(0, Math.min(tempoDecorrido / duracaoSegundos, 1));
     const diferenca = progresso - progressoEsperado;
-
-    // Se o score está baixo, não aceleramos muito,
-    // porque pode ser erro de transcrição do Vosk.
-    if (score < 0.40) {
-        return 0.45;
-    }
-
-    // Falou bem mais rápido do que o tempo previsto.
-    if (diferenca >= 0.25) {
-        return 1.45;
-    }
-
-    // Falou um pouco mais rápido.
-    if (diferenca >= 0.12) {
-        return 1.25;
-    }
-
-    // Falou bem mais lento.
-    if (diferenca <= -0.25) {
-        return 0.45;
-    }
-
-    // Falou um pouco mais lento.
-    if (diferenca <= -0.12) {
-        return 0.70;
-    }
-
-    // Está dentro do ritmo planejado pelo JSON.
+    if (score < 0.40) return 0.45;
+    if (diferenca >= 0.25) return 1.45;
+    if (diferenca >= 0.12) return 1.25;
+    if (diferenca <= -0.25) return 0.45;
+    if (diferenca <= -0.12) return 0.70;
     return 1.0;
 }
 
 function ativarRolagemPorVozSePossivel() {
-    /*
-        O teleprompter precisa ser guiado pela fala.
-        Então, quando a voz está acompanhando o roteiro,
-        a rolagem pode ser ligada automaticamente, desde que
-        o operador não tenha parado manualmente.
-    */
-
-    if (rolagemInterrompidaManualmente) {
-        return;
-    }
-
+    if (rolagemInterrompidaManualmente) return;
     if (!rolagemContinuaAtiva) {
         rolagemContinuaAtiva = true;
         atualizarTextoBotaoRolagem();
@@ -564,120 +631,7 @@ function liberarRolagemPorRetornoAoRoteiro() {
         motivoBloqueioRolagem = "";
         pausaTecnicaAte = 0;
     }
-
     ativarRolagemPorVozSePossivel();
-}
-
-// ============================================================
-// ROLAGEM CONTÍNUA
-// ============================================================
-
-function atualizarTextoBotaoRolagem() {
-    if (!scrollToggleBtn) return;
-
-    if (rolagemContinuaAtiva) {
-        scrollToggleBtn.textContent = "⏸ PAUSAR ROLAGEM";
-        scrollToggleBtn.classList.add("active");
-    } else {
-        scrollToggleBtn.textContent = "▶ INICIAR ROLAGEM";
-        scrollToggleBtn.classList.remove("active");
-    }
-}
-
-function popularDispositivosAudio(dispositivos) {
-    const select = document.getElementById("audioDeviceSelect");
-    if (!select) return;
-
-    const valorAtual = select.value;
-
-    select.innerHTML = "";
-
-    const opcaoAuto = document.createElement("option");
-    opcaoAuto.value = "auto";
-    opcaoAuto.textContent = "🔄 Auto (primeiro disponível)";
-    select.appendChild(opcaoAuto);
-
-    dispositivos.forEach((dispositivo) => {
-        const opcao = document.createElement("option");
-        opcao.value = String(dispositivo.index);
-        opcao.textContent = `🎤 ${dispositivo.name} (ch: ${dispositivo.maxInputChannels}, ${Math.round(dispositivo.defaultSampleRate)}Hz)`;
-        select.appendChild(opcao);
-    });
-
-    const salvo = localStorage.getItem("tp_audio_device");
-    if (salvo) {
-        select.value = salvo;
-    } else if (valorAtual) {
-        select.value = valorAtual;
-    }
-
-    console.log(`[AUDIO] ${dispositivos.length} dispositivos carregados no dropdown`);
-}
-
-function mostrarToast(mensagem, tipo = "info") {
-    let container = document.getElementById("toast-container");
-    if (!container) {
-        container = document.createElement("div");
-        container.id = "toast-container";
-        container.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 10000;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            pointer-events: none;
-        `;
-        document.body.appendChild(container);
-    }
-
-    const toast = document.createElement("div");
-    toast.textContent = mensagem;
-    toast.style.cssText = `
-        padding: 12px 20px;
-        border-radius: 6px;
-        font-size: 14px;
-        font-weight: 500;
-        color: #fff;
-        background: ${tipo === "error" ? "#cc2929" : tipo === "success" ? "#2e7d32" : "#0076ff"};
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        animation: slideIn 0.3s ease-out;
-        pointer-events: auto;
-    `;
-
-    if (!document.getElementById("toast-styles")) {
-        const style = document.createElement("style");
-        style.id = "toast-styles";
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            @keyframes slideOut {
-                from { transform: translateX(0); opacity: 1; }
-                to { transform: translateX(100%); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
-    container.appendChild(toast);
-
-    setTimeout(() => {
-        toast.style.animation = "slideOut 0.3s ease-in forwards";
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
-
-function pararRolagemContinua() {
-    rolagemContinuaAtiva = false;
-    rolagemInterrompidaManualmente = true;
-    velocidadeVozFatorAlvo = 0;
-    velocidadeVozFatorAtual = 0;
-    ultimoFrame = null;
-
-    atualizarTextoBotaoRolagem();
 }
 
 function podeRolarAgora() {
@@ -687,146 +641,107 @@ function podeRolarAgora() {
     return true;
 }
 
-function animarRolagemContinua(timestamp) {
-    if (ultimoFrame === null) {
-        ultimoFrame = timestamp;
+function atualizarTextoBotaoRolagem() {
+    if (!scrollToggleBtn) return;
+    if (rolagemContinuaAtiva) {
+        scrollToggleBtn.textContent = "⏸ PAUSAR ROLAGEM";
+        scrollToggleBtn.classList.add("active");
+    } else {
+        scrollToggleBtn.textContent = "▶ INICIAR ROLAGEM";
+        scrollToggleBtn.classList.remove("active");
     }
+}
 
+function pararRolagemContinua() {
+    rolagemContinuaAtiva = false;
+    rolagemInterrompidaManualmente = true;
+    velocidadeVozFatorAlvo = 0;
+    velocidadeVozFatorAtual = 0;
+    ultimoFrame = null;
+    atualizarTextoBotaoRolagem();
+}
+
+function animarRolagemContinua(timestamp) {
+    if (ultimoFrame === null) ultimoFrame = timestamp;
     const delta = timestamp - ultimoFrame;
     ultimoFrame = timestamp;
-
-    deslocamentoBaseEditor +=
-        (alvoDeslocamentoBaseEditor - deslocamentoBaseEditor) *
-        suavidadeSincronizacao;
-
-    deslocamentoBaseDisplay +=
-        (alvoDeslocamentoBaseDisplay - deslocamentoBaseDisplay) *
-        suavidadeSincronizacao;
-
+    deslocamentoBaseEditor += (alvoDeslocamentoBaseEditor - deslocamentoBaseEditor) * suavidadeSincronizacao;
+    deslocamentoBaseDisplay += (alvoDeslocamentoBaseDisplay - deslocamentoBaseDisplay) * suavidadeSincronizacao;
     verificarFimPausaTecnica(timestamp);
-
-    // A velocidade real se aproxima da velocidade alvo calculada pela voz.
-    // Isso evita trancos quando o apresentador acelera ou desacelera.
-    velocidadeVozFatorAtual +=
-        (velocidadeVozFatorAlvo - velocidadeVozFatorAtual) *
-        SUAVIDADE_VELOCIDADE_VOZ;
-
+    velocidadeVozFatorAtual += (velocidadeVozFatorAlvo - velocidadeVozFatorAtual) * 0.08;
     const distanciaEditor = Math.abs(alvoDeslocamentoBaseEditor - deslocamentoBaseEditor);
     const distanciaDisplay = Math.abs(alvoDeslocamentoBaseDisplay - deslocamentoBaseDisplay);
-
-    const aindaCorrigindoPosicao =
-        distanciaEditor > 2 ||
-        distanciaDisplay > 2;
-
+    const aindaCorrigindoPosicao = distanciaEditor > 2 || distanciaDisplay > 2;
     if (podeRolarAgora() && !aindaCorrigindoPosicao) {
         const velocidadePxPorMs = calcularVelocidadePxPorMs();
-
-        // Move o texto para cima.
         posicaoRolagemContinua -= velocidadePxPorMs * delta;
     }
-
     aplicarTransformacao();
-
     requestAnimationFrame(animarRolagemContinua);
 }
 
+function iniciarPausaTecnicaPorEstado(tipo, motivo, pausaSegundos, estadoVoz) { /* alias */ }
+
 // ============================================================
-// EVENTOS SOCKETIO
+// Eventos SocketIO
 // ============================================================
 
 socket.on("connect", () => {
     console.log("Frontend conectado ao backend SocketIO.");
     console.log("ID da conexão:", socket.id);
-
     socket.emit("iniciar_motor");
     socket.emit("solicitar_config_rolagem");
-
-    console.log("Eventos iniciar_motor e solicitar_config_rolagem enviados.");
+    console.log("Eventos enviados.");
 });
 
 socket.on("roteiro", (dados) => {
     console.log("Roteiro recebido do backend:", dados);
-
     linhasRoteiro = dados.linhas || [];
     segmentosRoteiro = dados.segmentos || [];
     metadadosLinhas = dados.metadadosLinhas || [];
     configuracaoRolagem = dados.configRolagem || null;
-
-    console.log("Segmentos recebidos:", segmentosRoteiro);
-    console.log("Metadados visuais recebidos:", metadadosLinhas);
-    console.log("Configuração recebida no roteiro:", configuracaoRolagem);
-
     indiceAtualVisual = dados.indiceAtual || 0;
-
     renderizarRoteiro(linhasRoteiro);
-
-    requestAnimationFrame(() => {
-        sincronizarTeleprompterImediato(indiceAtualVisual);
-    });
+    requestAnimationFrame(() => sincronizarTeleprompterImediato(indiceAtualVisual));
 });
 
 socket.on("config_rolagem", (dados) => {
     configuracaoRolagem = dados;
-
     console.log("Configuração de rolagem recebida:", dados);
 });
 
 socket.on("cmd", (dados) => {
     console.log("Comando de rolagem recebido:", dados);
-
     if (typeof dados.index === "number") {
         absorverRolagemContinuaNaBase();
         sincronizarTeleprompter(dados.index);
     }
-
     if (Number(dados.pausaAposSegundos) > 0) {
-        iniciarPausaTecnica(
-            Number(dados.pausaAposSegundos),
-            dados.motivoPausa || "Pausa técnica após fala"
-        );
+        iniciarPausaTecnica(Number(dados.pausaAposSegundos), dados.motivoPausa || "Pausa técnica após fala");
     }
 });
 
 socket.on("voz_roteiro", (dados) => {
     console.log("Andamento da voz recebido:", dados);
-
     if (!dados) return;
-
     estadoVozAtual = dados.estadoVoz || "aguardando";
-
-    if (
-        estadoVozAtual === "acompanhando" ||
-        estadoVozAtual === "retomou"
-    ) {
+    if (estadoVozAtual === "acompanhando" || estadoVozAtual === "retomou") {
         ultimoMatchVozMs = Date.now();
-
         if (estadoVozAtual === "retomou") {
             liberarRolagemPorRetornoAoRoteiro();
         } else if (!rolagemBloqueadaPorSistema) {
             ativarRolagemPorVozSePossivel();
         }
-
         velocidadeVozFatorAlvo = calcularFatorDeVoz(dados);
-
-        console.log(
-            "Fator de velocidade pela voz:",
-            velocidadeVozFatorAlvo
-        );
-
+        console.log("Fator de velocidade pela voz:", velocidadeVozFatorAlvo);
         return;
     }
-
     if (estadoVozAtual === "improviso") {
         const tempoSemMatch = Date.now() - ultimoMatchVozMs;
-
-        // Não pausamos no primeiro erro do Vosk.
-        // Só travamos se a fala continuar fora do roteiro por alguns instantes.
         if (tempoSemMatch >= TEMPO_SEM_MATCH_IMPROVISO_MS) {
             pausarRolagemPorImproviso();
             console.log("Improviso detectado. Rolagem pausada pela voz.");
         } else {
-            // Enquanto ainda não temos certeza se é improviso,
-            // reduzimos a velocidade para evitar avanço indevido.
             velocidadeVozFatorAlvo = 0.35;
         }
     }
@@ -834,44 +749,26 @@ socket.on("voz_roteiro", (dados) => {
 
 socket.on("estado_rolagem", (dados) => {
     console.log("Estado de rolagem recebido:", dados);
-
     if (!dados) return;
-
-    if (dados.tipo === "IMPROVISO") {
-        pausarRolagemPorImproviso();
-        return;
-    }
-
+    if (dados.tipo === "IMPROVISO") { pausarRolagemPorImproviso(); return; }
     if (dados.tipo === "VT_OU_LINK") {
-        iniciarPausaTecnica(
-            Number(dados.pausaSegundos || 0),
-            dados.motivo || "VT/link"
-        );
-        return;
+        iniciarPausaTecnica(Number(dados.pausaSegundos || 0), dados.motivo || "VT/link"); return;
     }
-
     if (dados.tipo === "RECONECTANDO_AUDIO") {
-        // Bloqueia rolagem durante troca de dispositivo de áudio
         rolagemBloqueadaPorSistema = true;
         motivoBloqueioRolagem = "RECONECTANDO_AUDIO";
-        mostrarToast("Trocando dispositivo de áudio...", "info");
-        return;
+        mostrarToast("Trocando dispositivo de áudio...", "info"); return;
     }
-
     if (dados.tipo === "AUTOMATICO") {
         liberarRolagemPorRetornoAoRoteiro();
         velocidadeVozFatorAlvo = 1.0;
-        iniciarTemporizadorDaLinha();
-        return;
+        iniciarTemporizadorDaLinha(); return;
     }
-
     if (dados.tipo === "FINALIZADO") {
         rolagemBloqueadaPorSistema = true;
         motivoBloqueioRolagem = dados.tipo;
-        pararRolagemContinua();
-        return;
+        pararRolagemContinua(); return;
     }
-
     if (dados.tipo === "PAUSADO" || dados.tipo === "FALHA") {
         rolagemBloqueadaPorSistema = true;
         motivoBloqueioRolagem = dados.tipo;
@@ -880,76 +777,43 @@ socket.on("estado_rolagem", (dados) => {
 
 socket.on("status_motor", (dados) => {
     console.log("Status do motor recebido:", dados);
-
     motorPausado = dados.estado === "PAUSADO";
-
-    if (dados.estado === "FINALIZADO") {
-        pararRolagemContinua();
-    }
-
-    if (dados.estado === "IMPROVISO") {
-        pausarRolagemPorImproviso();
-    }
-
-    if (dados.estado === "AUTOMATICO" && motivoBloqueioRolagem === "IMPROVISO") {
-        liberarRolagemPorRetornoAoRoteiro();
-    }
-
+    if (dados.estado === "FINALIZADO") pararRolagemContinua();
+    if (dados.estado === "IMPROVISO") pausarRolagemPorImproviso();
+    if (dados.estado === "AUTOMATICO" && motivoBloqueioRolagem === "IMPROVISO") liberarRolagemPorRetornoAoRoteiro();
     if (dados.estado === "RECONECTANDO_AUDIO") {
-        // Bloqueia rolagem durante reconexão de áudio
         rolagemBloqueadaPorSistema = true;
         motivoBloqueioRolagem = "RECONECTANDO_AUDIO";
         mostrarToast("Trocando dispositivo de áudio...", "info");
     }
 });
 
-
 socket.on("config_tp_display", (dados) => {
     console.log("Configuração TP Display recebida:", dados);
-
     if (!dados) return;
-
     const root = document.documentElement;
-
-    if (typeof dados.maxWidthVw === "number") {
-        root.style.setProperty("--tp-max-width-vw", `${dados.maxWidthVw}vw`);
-    }
-
-    if (typeof dados.maxHeightVh === "number") {
-        root.style.setProperty("--tp-max-height-vh", `${dados.maxHeightVh}vh`);
-    }
-
-    console.log("CSS variables atualizadas para TP Display");
+    if (typeof dados.maxWidthVw === "number") root.style.setProperty("--tp-max-width-vw", `${dados.maxWidthVw}vw`);
+    if (typeof dados.maxHeightVh === "number") root.style.setProperty("--tp-max-height-vh", `${dados.maxHeightVh}vh`);
 });
 
-
 socket.on("dispositivos_audio", (dados) => {
-    console.log("Dispositivos de áudio recebidos:", dados);
-
-    if (!dados || !dados.dispositivos) return;
-
-    popularDispositivosAudio(dados.dispositivos);
+    // In hybrid mode, audio comes from browser - no device list UI needed
+    console.log("Dispositivos de áudio do servidor (fallback):", dados);
 });
 
 // ============================================================
-// COMANDOS MANUAIS
+// Comandos manuais
 // ============================================================
 
 function prepararComandoManual() {
     comandoManualPendente = true;
-
     absorverRolagemContinuaNaBase();
-
     velocidadeVozFatorAlvo = 1.0;
     velocidadeVozFatorAtual = 1.0;
-
     rolagemBloqueadaPorSistema = false;
     motivoBloqueioRolagem = "";
     pausaTecnicaAte = 0;
-
-    // Depois de NEXT/PREV manual, permitimos que a voz volte a acionar a rolagem.
     rolagemInterrompidaManualmente = false;
-
     atualizarTextoBotaoRolagem();
 }
 
@@ -972,103 +836,67 @@ if (btnPrev) btnPrev.addEventListener("click", enviarRetornoManual);
 if (btnPlayLocal) btnPlayLocal.addEventListener("click", alternarPausaMotor);
 
 document.addEventListener("keydown", (evento) => {
-    if (evento.key === "ArrowDown") {
-        evento.preventDefault();
-        enviarAvancoManual();
-    }
-
-    if (evento.key === "ArrowUp") {
-        evento.preventDefault();
-        enviarRetornoManual();
-    }
-
-    if (evento.code === "Space") {
-        evento.preventDefault();
-        alternarPausaMotor();
-    }
+    if (evento.key === "ArrowDown") { evento.preventDefault(); enviarAvancoManual(); }
+    if (evento.key === "ArrowUp") { evento.preventDefault(); enviarRetornoManual(); }
+    if (evento.code === "Space") { evento.preventDefault(); alternarPausaMotor(); }
 });
 
-// Botão específico para ligar/desligar rolagem contínua visual.
+// Botão de rolagem
 if (scrollToggleBtn) {
     scrollToggleBtn.addEventListener("click", () => {
         rolagemContinuaAtiva = !rolagemContinuaAtiva;
-
-        // Se o operador parar manualmente, a voz não religa sozinha.
-        // Se ele iniciar manualmente, a voz volta a poder ajustar o ritmo.
         rolagemInterrompidaManualmente = !rolagemContinuaAtiva;
-
         atualizarTextoBotaoRolagem();
-
-        if (rolagemContinuaAtiva) {
-            iniciarTemporizadorDaLinha();
-        }
+        if (rolagemContinuaAtiva) iniciarTemporizadorDaLinha();
     });
 }
 
-// Seletor de dispositivo de áudio
-const audioDeviceSelect = document.getElementById("audioDeviceSelect");
-if (audioDeviceSelect) {
-    audioDeviceSelect.addEventListener("change", () => {
-        const deviceIndex = audioDeviceSelect.value;
-        localStorage.setItem("tp_audio_device", deviceIndex);
-        socket.emit("selecionar_dispositivo_audio", { device_index: deviceIndex });
-        console.log("[AUDIO] Dispositivo selecionado:", deviceIndex);
-    });
-
-    // Restaura seleção salva ao carregar
-    const salvo = localStorage.getItem("tp_audio_device");
-    if (salvo) {
-        audioDeviceSelect.value = salvo;
-        socket.emit("selecionar_dispositivo_audio", { device_index: salvo });
-    }
-}
-
 // ============================================================
-// CHAVEADOR WINPLUS
+// Speech Recognition Control
 // ============================================================
 
-if (winplusToggleBtn && appBody) {
-    winplusToggleBtn.addEventListener("click", () => {
-        const isInactive = appBody.classList.contains("winplus-inactive");
-
-        if (isInactive) {
-            appBody.classList.remove("winplus-inactive");
-            appBody.classList.add("winplus-active");
-
-            winplusToggleBtn.textContent = "□ TELA CHEIA";
-            winplusToggleBtn.classList.remove("active-stop");
+function iniciarReconhecimentoVoz() {
+    if (!isSpeaking) {
+        isSpeaking = true;
+        if (speechMode === SPEECH_MODE.WEB) {
+            startWebSpeech();
         } else {
-            appBody.classList.remove("winplus-active");
-            appBody.classList.add("winplus-inactive");
-
-            winplusToggleBtn.textContent = "▣ MODO OPERADOR";
-            winplusToggleBtn.classList.remove("active-stop");
+            startVoskRecording();
         }
-
-        requestAnimationFrame(() => {
-            ultimoFrame = null;
-
-            sincronizarTeleprompter(indiceAtualVisual, {
-                preservarRolagem: true
-            });
-        });
-    });
+    }
 }
 
-document.addEventListener("keydown", (e) => {
-    if (
-        e.key === "Escape" &&
-        appBody &&
-        appBody.classList.contains("winplus-active") &&
-        winplusToggleBtn
-    ) {
-        e.preventDefault();
-        winplusToggleBtn.click();
+function pararReconhecimentoVoz() {
+    if (isSpeaking) {
+        isSpeaking = false;
+        if (speechMode === SPEECH_MODE.WEB) {
+            stopWebSpeech();
+        } else {
+            stopVoskRecording();
+        }
     }
+}
+
+// Web Speech recognition is independent of motor paused state
+// It runs continuously alongside the motor
+socket.on("connect", () => {
+    // Already handled above
+});
+
+// When motor starts, also start speech recognition
+const origEmitIniciarMotor = socket.emit;
+// Wrap emit to track motor start
+socket.on("status_motor", (dados) => {
+    // Already handled above
+});
+
+// Auto-start speech recognition on motor start
+socket.on("iniciar_motor", function () {
+    // handled by original connect event
 });
 
 // ============================================================
-// FORMATAÇÃO
+// Formatação
 // ============================================================
 
 if (fontName) {
@@ -1120,10 +948,6 @@ if (mirrorBtn) {
     });
 }
 
-// Slider agora é fator multiplicador.
-// 1 = tempo exato do JSON.
-// 0.5 = metade da velocidade.
-// 2 = dobro da velocidade.
 if (speedWheel) {
     speedWheel.min = "0.25";
     speedWheel.max = "2.5";
@@ -1132,18 +956,13 @@ if (speedWheel) {
 
     speedWheel.addEventListener("input", () => {
         fatorManualVelocidade = Number(speedWheel.value);
-
-        localStorage.setItem(
-            "tp_velocidade",
-            String(fatorManualVelocidade)
-        );
-
+        localStorage.setItem("tp_velocidade", String(fatorManualVelocidade));
         console.log("Fator manual da rolagem:", fatorManualVelocidade);
     });
 }
 
 // ============================================================
-// ARQUIVO / EDIÇÃO LOCAL
+// Arquivo / Edição Local
 // ============================================================
 
 if (btnOpenFile && fileInput) {
@@ -1153,11 +972,8 @@ if (btnOpenFile && fileInput) {
 if (fileInput) {
     fileInput.addEventListener("change", async () => {
         const arquivo = fileInput.files[0];
-
         if (!arquivo) return;
-
         const texto = await arquivo.text();
-
         if (editor) {
             editor.innerText = texto;
             linhasRoteiro = texto.split("\n").filter(l => l.trim() !== "");
@@ -1171,21 +987,13 @@ if (fileInput) {
 if (btnSaveFile) {
     btnSaveFile.addEventListener("click", () => {
         const container = obterContainerTexto();
-
         if (!container) return;
-
-        const blob = new Blob(
-            [container.innerText],
-            { type: "text/plain;charset=utf-8" }
-        );
-
+        const blob = new Blob([container.innerText], { type: "text/plain;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-
         link.href = url;
         link.download = "roteiro_teleprompter.txt";
         link.click();
-
         URL.revokeObjectURL(url);
     });
 }
@@ -1194,7 +1002,7 @@ if (btnUndo) btnUndo.addEventListener("click", () => document.execCommand("undo"
 if (btnRedo) btnRedo.addEventListener("click", () => document.execCommand("redo"));
 
 // ============================================================
-// ESCONDER / RESTAURAR BARRAS
+// Esconder / Restaurar barras
 // ============================================================
 
 if (btnClose) {
@@ -1214,50 +1022,126 @@ if (btnRestore) {
 }
 
 // ============================================================
-// SINCRONIZAÇÃO ENTRE TELAS
+// Sincronização entre telas
 // ============================================================
 
 if (canal) {
     canal.onmessage = (evento) => {
         const dados = evento.data;
-
         if (!dados || dados.tipo !== "estilo") return;
-
         estiloTexto = { ...estiloTexto, ...dados.estilo };
         aplicarEstiloTexto();
     };
 }
 
 // ============================================================
-// INICIALIZAÇÃO
+// WinPlus toggle
+// ============================================================
+
+if (winplusToggleBtn && appBody) {
+    winplusToggleBtn.addEventListener("click", () => {
+        const isInactive = appBody.classList.contains("winplus-inactive");
+        if (isInactive) {
+            appBody.classList.remove("winplus-inactive");
+            appBody.classList.add("winplus-active");
+            winplusToggleBtn.textContent = "□ TELA CHEIA";
+        } else {
+            appBody.classList.remove("winplus-active");
+            appBody.classList.add("winplus-inactive");
+            winplusToggleBtn.textContent = "▣ MODO OPERADOR";
+        }
+        requestAnimationFrame(() => {
+            ultimoFrame = null;
+            sincronizarTeleprompter(indiceAtualVisual, { preservarRolagem: true });
+        });
+    });
+}
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && appBody && appBody.classList.contains("winplus-active") && winplusToggleBtn) {
+        e.preventDefault();
+        winplusToggleBtn.click();
+    }
+});
+
+// ============================================================
+// Toast helper
+// ============================================================
+
+function mostrarToast(mensagem, tipo = "info") {
+    let container = document.getElementById("toast-container");
+    if (!container) {
+        container = document.createElement("div");
+        container.id = "toast-container";
+        container.style.cssText = `
+            position: fixed; bottom: 20px; right: 20px; z-index: 10000;
+            display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+        `;
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement("div");
+    toast.textContent = mensagem;
+    toast.style.cssText = `
+        padding: 12px 20px; border-radius: 6px; font-size: 14px; font-weight: 500;
+        color: #fff; background: ${tipo === "error" ? "#cc2929" : tipo === "success" ? "#2e7d32" : "#0076ff"};
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3); pointer-events: auto;
+    `;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateX(100%)";
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// ============================================================
+// Bloquear seleção (UX)
 // ============================================================
 
 function bloquearSelecaoNoTeleprompter() {
     [editor, display].forEach(container => {
         if (!container) return;
-
         container.addEventListener("mousedown", (evento) => {
             const clicouEmLinha = evento.target.closest(".linha-roteiro, .comentario");
-
             if (clicouEmLinha) {
                 evento.preventDefault();
-
-                if (window.getSelection) {
-                    window.getSelection().removeAllRanges();
-                }
-
+                if (window.getSelection) window.getSelection().removeAllRanges();
                 container.blur();
             }
         });
     });
 }
-
 bloquearSelecaoNoTeleprompter();
 
+// ============================================================
+// Inicialização
+// ============================================================
 
 aplicarEstiloTexto();
 atualizarTextoBotaoRolagem();
 requestAnimationFrame(animarRolagemContinua);
 
+// Start speech recognition when motor starts
+// The motor start event is triggered by backend via socket
+socket.on("iniciar_motor", () => {
+    // Speech recognition is browser-driven
+});
 
+// When connect fires, wait for motor start and then begin speech
+let motorStarted = false;
+socket.on("status_motor", (dados) => {
+    if (dados.correndo && !motorStarted) {
+        motorStarted = true;
+        // Delay to ensure UI is ready
+        setTimeout(() => {
+            iniciarReconhecimentoVoz();
+        }, 500);
+    }
+    if (!dados.correndo) {
+        motorStarted = false;
+        pararReconhecimentoVoz();
+    }
+});
 
+console.log("Teleprompter frontend (hybrid speech) loaded.");
+console.log("Web Speech API supported:", speechRecognitionSupported);
