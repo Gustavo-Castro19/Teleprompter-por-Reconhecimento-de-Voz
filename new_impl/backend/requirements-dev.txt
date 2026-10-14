@@ -1,0 +1,18 @@
+# Development dependencies
+-r requirements.txt
+
+# Testing
+pytest==8.3.5
+pytest-asyncio==0.25.3
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+
+# Linting
+ruff==0.9.6
+mypy==1.15.0
+
+# Type stubs
+types-requests==2.32.0.20250217
+
+# Pre-commit
+pre-commit==4.0.1
