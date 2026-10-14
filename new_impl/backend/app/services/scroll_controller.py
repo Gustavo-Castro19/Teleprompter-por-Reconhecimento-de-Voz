@@ -3,7 +3,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from app.config import get_settings
-from app.models import StateMachine
+from app.services.state_machine import StateMachine
 from app.services.aligner import ScriptAligner
 from app.utils.text_normalizer import get_comparator
 from app.utils.logger import EventLogger, get_logger

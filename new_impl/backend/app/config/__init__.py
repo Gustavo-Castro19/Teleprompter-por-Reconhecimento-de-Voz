@@ -24,12 +24,17 @@ class Settings(BaseSettings):
 
     # Script
     script_path: str = "roteiros/roteiro_demo_bddf.json"
+    caminho_roteiro: str = "roteiros/roteiro_demo_bddf.json"
 
     # Speech recognition
     palavras_por_minuto_base: int = 150
     similaridade_minima: float = 0.6
     cobertura_minima: float = 0.4
     relevancia_minima: float = 0.3
+    intervalo_avanco: float = 0.8
+    score_minimo_andamento_voz: float = 0.35
+    habilitar_improvido: bool = True
+    min_palavras_improvido: int = 3
 
     # Scroll
     velocidade_minima_rolagem: float = 0.05
@@ -77,6 +82,10 @@ CONFIG = {
     "similaridade_minima": get_settings().similaridade_minima,
     "cobertura_minima": get_settings().cobertura_minima,
     "relevancia_minima": get_settings().relevancia_minima,
+    "intervalo_avanco": get_settings().intervalo_avanco,
+    "score_minimo_andamento_voz": get_settings().score_minimo_andamento_voz,
+    "habilitar_improvido": get_settings().habilitar_improvido,
+    "min_palavras_improvido": get_settings().min_palavras_improvido,
     "velocidade_minima_rolagem": get_settings().velocidade_minima_rolagem,
     "velocidade_maxima_rolagem": get_settings().velocidade_maxima_rolagem,
     "tp_display": {
