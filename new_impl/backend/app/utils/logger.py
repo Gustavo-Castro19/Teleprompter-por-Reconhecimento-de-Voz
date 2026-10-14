@@ -49,6 +49,11 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
 # Backward compatibility class
 class Colors:
     VERDE = "\033[92m"

@@ -973,6 +973,38 @@ if (fileInput) {
     fileInput.addEventListener("change", async () => {
         const arquivo = fileInput.files[0];
         if (!arquivo) return;
+
+        if (arquivo.name.toLowerCase().endsWith(".json")) {
+            try {
+                const conteudo = await arquivo.text();
+                const resp = await fetch("/api/scripts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: conteudo,
+                });
+                const dados = await resp.json();
+                console.log("Script parseado pelo backend:", dados);
+                if (dados.programs) {
+                    linhasRoteiro = [];
+                    dados.programs.forEach((p) => {
+                        (p.blocks || []).forEach((b) => {
+                            (b.subblocks || []).forEach((sb) => {
+                                (sb.lines || []).forEach((l) => linhasRoteiro.push(l));
+                            });
+                        });
+                    });
+                    segmentosRoteiro = [];
+                    metadadosLinhas = [];
+                    renderizarRoteiro(linhasRoteiro);
+                    mostrarToast("Roteiro carregado via backend", "success");
+                }
+            } catch (err) {
+                console.error("Erro ao enviar roteiro ao backend:", err);
+                mostrarToast("Falha ao processar roteiro", "error");
+            }
+            return;
+        }
+
         const texto = await arquivo.text();
         if (editor) {
             editor.innerText = texto;

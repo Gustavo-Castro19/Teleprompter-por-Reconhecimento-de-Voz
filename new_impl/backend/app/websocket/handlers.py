@@ -40,13 +40,14 @@ def init_websocket(sio):
 
 
 def emit_script_to_frontend():
+    from flask import request
     first_visual = aligner.get_first_visual_index() if aligner else 0
 
     segments_frontend = [s.to_frontend() for s in state.segments]
     metadata_frontend = [m.to_frontend() for m in state.visual_metadata]
     scroll_config = calculate_scroll_config()
 
-    socketio.emit(
+    emit(
         "roteiro",
         {
             "linhas": state.visual_lines,
@@ -54,12 +55,13 @@ def emit_script_to_frontend():
             "segmentos": segments_frontend,
             "metadadosLinhas": metadata_frontend,
             "configRolagem": scroll_config,
-        }
+        },
+        broadcast=True,
     )
 
-    socketio.emit("config_rolagem", scroll_config)
+    emit("config_rolagem", scroll_config, broadcast=True)
 
-    socketio.emit(
+    emit(
         "cmd",
         {
             "index": first_visual,
@@ -67,7 +69,8 @@ def emit_script_to_frontend():
             "text": "",
             "segmento": None,
             "pausaAposSegundos": 0,
-        }
+        },
+        broadcast=True,
     )
 
     emit_tp_display_config()
@@ -153,7 +156,7 @@ def register_handlers(sio):
     init_websocket(sio)
 
     @sio.on("connect")
-    def handle_connect():
+    def handle_connect(auth=None):
         EventLogger.client_connected()
         emit_script_to_frontend()
         emit_status()

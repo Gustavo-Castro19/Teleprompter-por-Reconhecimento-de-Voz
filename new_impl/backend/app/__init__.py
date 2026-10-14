@@ -21,7 +21,6 @@ socketio = SocketIO(
 
 
 def create_app() -> Flask:
-    # Setup logging
     setup_logging(
         level=settings.flask_env.upper() if settings.flask_env != "development" else "DEBUG",
         json_format=settings.flask_env == "production"
@@ -41,7 +40,6 @@ def create_app() -> Flask:
     app.config["SECRET_KEY"] = settings.secret_key
     app.config["ENV"] = settings.flask_env
 
-    # Register blueprints
     app.register_blueprint(health_bp)
     app.register_blueprint(scripts_bp, url_prefix="/api")
     app.register_blueprint(teleprompter_bp)
