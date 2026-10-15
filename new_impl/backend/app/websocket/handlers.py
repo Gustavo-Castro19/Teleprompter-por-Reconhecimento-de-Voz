@@ -1,7 +1,7 @@
 from flask import request
 from flask_socketio import emit, join_room, leave_room
 
-from app.services import StateMachine, ScrollController, ScriptAligner, HybridSpeechRecognizer
+from app.services import StateMachine, TeleprompterState, ScrollController, ScriptAligner, HybridSpeechRecognizer
 from app.services.script_processor import ScriptProcessor
 from app.utils.logger import EventLogger, get_logger
 
@@ -56,10 +56,9 @@ def emit_script_to_frontend():
             "metadadosLinhas": metadata_frontend,
             "configRolagem": scroll_config,
         },
-        broadcast=True,
     )
 
-    emit("config_rolagem", scroll_config, broadcast=True)
+    emit("config_rolagem", scroll_config)
 
     emit(
         "cmd",
@@ -70,7 +69,6 @@ def emit_script_to_frontend():
             "segmento": None,
             "pausaAposSegundos": 0,
         },
-        broadcast=True,
     )
 
     emit_tp_display_config()
@@ -122,6 +120,8 @@ def emit_audio_devices():
     except Exception as e:
         logger.error(f"Failed to list audio devices: {e}")
         devices = []
+    finally:
+        audio_mgr.close_microphone()
 
     socketio.emit("dispositivos_audio", {"dispositivos": devices})
     logger.info(f"[SOCKET] Audio devices sent: {len(devices)} found")
@@ -169,7 +169,7 @@ def register_handlers(sio):
     def handle_start_engine():
         logger.info("[SOCKET] Engine start requested")
         state.running = True
-        state.change_state("AUTOMATIC")
+        state.change_state(TeleprompterState.AUTOMATIC)
         emit_status()
         emit_scroll_state("AUTOMATICO", "Motor iniciado")
 
@@ -193,14 +193,14 @@ def register_handlers(sio):
     @sio.on("pausar_motor")
     def handle_pause():
         if not state.is_finished():
-            state.change_state("PAUSED")
+            state.change_state(TeleprompterState.PAUSED)
             emit_scroll_state("PAUSADO", "Pausa manual")
         emit_status()
 
     @sio.on("retomar_motor")
     def handle_resume():
         if not state.is_finished():
-            state.change_state("AUTOMATIC")
+            state.change_state(TeleprompterState.AUTOMATIC)
             emit_scroll_state("AUTOMATICO", "Retomada manual")
         emit_status()
 
@@ -211,10 +211,10 @@ def register_handlers(sio):
             return
 
         if state.is_paused():
-            state.change_state("AUTOMATIC")
+            state.change_state(TeleprompterState.AUTOMATIC)
             emit_scroll_state("AUTOMATICO", "Retomada manual")
         else:
-            state.change_state("PAUSED")
+            state.change_state(TeleprompterState.PAUSED)
             emit_scroll_state("PAUSADO", "Pausa manual")
         emit_status()
 

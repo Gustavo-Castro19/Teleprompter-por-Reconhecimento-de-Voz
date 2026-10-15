@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     relevancia_minima: float = 0.3
     intervalo_avanco: float = 0.8
     score_minimo_andamento_voz: float = 0.35
-    habilitar_improvido: bool = True
-    min_palavras_improvido: int = 3
+    habilitar_improviso: bool = True
+    min_palavras_improviso: int = 3
 
     # Scroll
     velocidade_minima_rolagem: float = 0.05
@@ -84,8 +84,8 @@ CONFIG = {
     "relevancia_minima": get_settings().relevancia_minima,
     "intervalo_avanco": get_settings().intervalo_avanco,
     "score_minimo_andamento_voz": get_settings().score_minimo_andamento_voz,
-    "habilitar_improvido": get_settings().habilitar_improvido,
-    "min_palavras_improvido": get_settings().min_palavras_improvido,
+    "habilitar_improviso": get_settings().habilitar_improviso,
+    "min_palavras_improviso": get_settings().min_palavras_improviso,
     "velocidade_minima_rolagem": get_settings().velocidade_minima_rolagem,
     "velocidade_maxima_rolagem": get_settings().velocidade_maxima_rolagem,
     "tp_display": {

@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from typing import Any
 from dataclasses import dataclass
@@ -246,7 +247,11 @@ class ScriptProcessor:
         self.segments = []
         self.visual_metadata = []
 
-        with open(settings.caminho_roteiro, "r", encoding="utf-8") as f:
+        script_path = settings.caminho_roteiro
+        if not os.path.isabs(script_path):
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            script_path = os.path.join(base_dir, script_path)
+        with open(script_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         visual_index_global = 0

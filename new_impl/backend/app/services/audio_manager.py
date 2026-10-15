@@ -55,7 +55,12 @@ class AudioManager:
     def open_microphone(self, device_index: Optional[int] = None) -> bytes:
         self._ensure_pyaudio()
 
-        audio_cfg = settings.audio
+        audio_cfg = {
+            "device_index": settings.audio_device_index,
+            "chunk_size": settings.audio_chunk_size,
+            "channels": settings.audio_channels,
+            "rate": settings.audio_rate,
+        }
         target_idx = device_index if device_index is not None else audio_cfg.get("device_index")
         sample_rate = audio_cfg.get("rate", 16000)
         channels = audio_cfg.get("channels", 1)

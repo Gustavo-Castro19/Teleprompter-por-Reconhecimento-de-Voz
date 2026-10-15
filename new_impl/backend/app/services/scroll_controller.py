@@ -3,7 +3,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from app.config import get_settings
-from app.services.state_machine import StateMachine
+from app.services.state_machine import StateMachine, TeleprompterState
 from app.services.aligner import ScriptAligner
 from app.utils.text_normalizer import get_comparator
 from app.utils.logger import EventLogger, get_logger
@@ -152,7 +152,7 @@ class ScrollController:
         if self.state.is_improv():
             self.state.update_improv_tracking(normalized)
             return
-        self.state.change_state("IMPROVISO")
+        self.state.change_state(TeleprompterState.IMPROV)
         self.state.improv_start_time = time.time()
         self.state.last_improv_text = normalized
         logger.info(f"IMPROVISO detected: {text}")
@@ -163,7 +163,7 @@ class ScrollController:
 
     def exit_improv(self):
         if self.state.is_improv() or self.state.is_vt_or_link():
-            self.state.change_state("AUTOMATIC")
+            self.state.change_state(TeleprompterState.AUTOMATIC)
             self.emit_scroll_state(
                 "AUTOMATICO",
                 "Fala voltou ao roteiro. Rolagem retomada."
@@ -194,7 +194,7 @@ class ScrollController:
             self.state.current_visual_index = self.state.spoken_to_visual_map[target_spoken_idx]
 
         if self.state.current_spoken_index >= total:
-            self.state.change_state("FINISHED")
+            self.state.change_state(TeleprompterState.FINISHED)
         else:
             self.exit_improv()
 
@@ -218,7 +218,7 @@ class ScrollController:
         self.socketio.emit("cmd", payload)
 
         if pause_after > 0:
-            self.state.change_state("VT_OR_LINK")
+            self.state.change_state(TeleprompterState.VT_OR_LINK)
             self.emit_scroll_state(
                 "VT_OU_LINK",
                 pause_reason or "Pausa técnica após fala",
@@ -236,6 +236,8 @@ class ScrollController:
         if self.state.current_spoken_index >= total:
             return ScrollDecision(False)
 
+        if self.state.current_spoken_index >= len(self.state.spoken_lines):
+            return ScrollDecision(False)
         current_line = self.state.spoken_lines[self.state.current_spoken_index]
 
         if self.comparator.is_noise(text, current_line):
@@ -319,6 +321,8 @@ class ScrollController:
 
         self.last_partial_processed = normalized
 
+        if self.state.current_spoken_index >= len(self.state.spoken_lines):
+            return False
         current_line = self.state.spoken_lines[self.state.current_spoken_index]
         current_normalized = self.comparator.normalizer.normalize(current_line)
 

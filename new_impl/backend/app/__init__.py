@@ -37,6 +37,10 @@ def create_app() -> Flask:
         static_folder=static_dir,
     )
 
+    if settings.flask_env == "production" and settings.secret_key == "squad29_dev_key":
+        raise RuntimeError("SECRET_KEY must be set in production")
+    if settings.flask_env == "production" and settings.cors_allowed_origins == "*":
+        raise RuntimeError("CORS_ALLOWED_ORIGINS must be set in production")
     app.config["SECRET_KEY"] = settings.secret_key
     app.config["ENV"] = settings.flask_env
 
@@ -68,7 +72,7 @@ def run_app():
         port=settings.port,
         debug=settings.flask_env == "development",
         use_reloader=False,
-        allow_unsafe_werkzeug=True,
+        allow_unsafe_werkzeug=settings.flask_env == "development",
     )
 
 
