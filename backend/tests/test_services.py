@@ -171,6 +171,17 @@ class TestScriptProcessor:
         assert not self.processor.is_spoken_line("===")
         assert not self.processor.is_spoken_line("123")  # No letters
 
+    def test_markup_keeps_spoken_to_visual_mapping(self):
+        result = self.processor.process_text_block(
+            "<p><pi>PRIMEIRA FALA</pi></p>\n"
+            "<p><pi>{{RODA VT}}</pi></p>\n"
+            "<p><pi>SEGUNDA FALA</pi></p>",
+            visual_index_start=0,
+        )
+
+        assert result.spoken_lines == ["PRIMEIRA FALA", "SEGUNDA FALA"]
+        assert result.spoken_to_visual_map == [0, 2]
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
