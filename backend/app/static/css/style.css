@@ -161,6 +161,23 @@ body {
     gap: 10px;
 }
 
+.btn-mic {
+    background: #174d2a;
+    color: #fff;
+    border: 1px solid #4c8a5c;
+    height: 30px;
+    padding: 0 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.btn-mic.active {
+    background: #a72b2b;
+    border-color: #c64a4a;
+}
+
 .logo-circle img {
     width: 40px;
     height: 40px;

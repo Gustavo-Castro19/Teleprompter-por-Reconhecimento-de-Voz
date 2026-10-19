@@ -15,13 +15,6 @@ class Settings(BaseSettings):
     vosk_model_path: str = "/app/models/vosk-model-pt"
     vosk_sample_rate: int = 16000
 
-    # Audio
-    audio_device_index: int | None = None
-    audio_chunk_size: int = 4096
-    audio_format: int = 16  # pyaudio.paInt16
-    audio_channels: int = 1
-    audio_rate: int = 16000
-
     # Script
     script_path: str = "roteiros/roteiro_demo_bddf.json"
     caminho_roteiro: str = "roteiros/roteiro_demo_bddf.json"
@@ -70,13 +63,6 @@ CONFIG = {
     "port": get_settings().port,
     "vosk_model_path": get_settings().vosk_model_path,
     "vosk_sample_rate": get_settings().vosk_sample_rate,
-    "audio": {
-        "device_index": get_settings().audio_device_index,
-        "chunk_size": get_settings().audio_chunk_size,
-        "format": get_settings().audio_format,
-        "channels": get_settings().audio_channels,
-        "rate": get_settings().audio_rate,
-    },
     "caminho_roteiro": get_settings().script_path,
     "palavras_por_minuto_base": get_settings().palavras_por_minuto_base,
     "similaridade_minima": get_settings().similaridade_minima,

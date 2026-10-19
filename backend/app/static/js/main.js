@@ -2,13 +2,11 @@
 // MAIN - Teleprompter entry point (ES Module)
 // ============================================================
 
-import { stateRef } from "./state.js";
-const s = stateRef;
 import { initElements } from "./state.js";
 import { initUI } from "./ui.js";
 import { initSocket } from "./socket.js";
 import { animarRolagemContinua } from "./scroller.js";
-import { initSpeechRecognition, iniciarReconhecimentoVoz, pararReconhecimentoVoz } from "./voice.js";
+import { initSpeechRecognition } from "./voice.js";
 
 function init() {
     // Initialize DOM elements
@@ -25,22 +23,6 @@ function init() {
 
     // Start animation loop
     requestAnimationFrame(animarRolagemContinua);
-
-    // Auto-start speech recognition when motor starts
-    let motorStarted = false;
-    s.socket.on("status_motor", (dados) => {
-        if (!window.IS_OPERATOR) return;
-        if (dados.correndo && !motorStarted) {
-            motorStarted = true;
-            setTimeout(() => {
-                iniciarReconhecimentoVoz();
-            }, 500);
-        }
-        if (!dados.correndo) {
-            motorStarted = false;
-            pararReconhecimentoVoz();
-        }
-    });
 
     console.log("Teleprompter frontend (modular) loaded.");
     console.log("Web Speech API supported:", "webkitSpeechRecognition" in window || "SpeechRecognition" in window);

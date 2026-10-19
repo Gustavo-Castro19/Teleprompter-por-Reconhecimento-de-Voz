@@ -1,6 +1,6 @@
 # Teleprompter por Reconhecimento de Voz — SQUAD 29
 
-> **Versão atual:** o código ativo foi reorganizado em [`new_impl/`](new_impl/README.md). Os caminhos e comandos deste documento descrevem a implementação antiga e não são a forma recomendada de executar a versão atual.
+> **Versão atual:** suba o app com `docker compose up --build` na raiz e abra `http://localhost:8000/comando`. Clique em **ATIVAR MICROFONE** para liberar a captura. `localhost` e `127.0.0.1` são origens seguras para uso local; para acessar pelo IP da rede ou hostname remoto, configure HTTPS. `0.0.0.0` é apenas o endereço em que o servidor escuta, não deve ser usado na barra do navegador.
 
 O **Teleprompter por Reconhecimento de Voz** é um MVP desenvolvido pela **Squad 29** com o objetivo de automatizar a rolagem de um teleprompter a partir da fala do apresentador.
 

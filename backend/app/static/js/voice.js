@@ -104,8 +104,7 @@ export function initSpeechRecognition() {
 
 function startWebSpeech() {
     if (!speechRecognitionSupported) {
-        console.warn("Web Speech not supported - falling back to Vosk");
-        switchToVoskMode();
+        console.warn("Web Speech not supported");
         return false;
     }
 
@@ -113,6 +112,7 @@ function startWebSpeech() {
         s.socket.emit("speech_start", withAuth({ mode: "web", language: "pt-BR" }));
         speechRecognition.start();
         isSpeaking = true;
+        atualizarBotaoMicrofone();
         console.log("Web Speech recognition started");
         reconnectAttempts = 0;
         return true;
@@ -132,6 +132,7 @@ function stopWebSpeech() {
         console.error("Failed to stop Web Speech:", e);
     }
     s.socket.emit("speech_stop", withAuth({}));
+    atualizarBotaoMicrofone();
 }
 
 function reconnectSpeech() {
@@ -162,6 +163,9 @@ async function switchToVoskMode() {
     stopWebSpeech();
 
     try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            throw new Error("Este navegador não disponibiliza acesso ao microfone nesta origem.");
+        }
         mediaStream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 channelCount: 1,
@@ -200,6 +204,7 @@ async function switchToVoskMode() {
         audioProcessor.connect(audioContext.destination);
         s.socket.emit("speech_start", withAuth({ mode: "vosk", language: "pt-BR" }));
         isSpeaking = true;
+        atualizarBotaoMicrofone();
 
         showVoskToast("Modo offline Vosk ativado");
     } catch (err) {
@@ -228,16 +233,26 @@ function stopVoskMode() {
     audioProcessor = null;
     audioSource = null;
     s.socket.emit("speech_stop", withAuth({}));
+    atualizarBotaoMicrofone();
 }
 
-export function iniciarReconhecimentoVoz() {
-    if (isSpeaking) return;
+export async function iniciarReconhecimentoVoz() {
+    if (isSpeaking) return true;
+    if (!window.isSecureContext) {
+        showVoskToast(
+            "O microfone exige HTTPS ou acesso por localhost/127.0.0.1.",
+            "error"
+        );
+        return false;
+    }
 
     if (speechMode === SPEECH_MODE.WEB) {
-        startWebSpeech();
+        if (startWebSpeech()) return true;
+        await switchToVoskMode();
     } else {
-        switchToVoskMode();
+        await switchToVoskMode();
     }
+    return isSpeaking;
 }
 
 export function pararReconhecimentoVoz() {
@@ -246,6 +261,18 @@ export function pararReconhecimentoVoz() {
     } else {
         stopVoskMode();
     }
+}
+
+export function reconhecimentoAtivo() {
+    return isSpeaking;
+}
+
+function atualizarBotaoMicrofone() {
+    const button = document.getElementById("micToggleBtn");
+    if (!button) return;
+    button.textContent = isSpeaking ? "MICROFONE ATIVO" : "ATIVAR MICROFONE";
+    button.classList.toggle("active", isSpeaking);
+    button.setAttribute("aria-pressed", String(isSpeaking));
 }
 
 // Toast helper

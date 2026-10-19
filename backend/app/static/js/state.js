@@ -27,6 +27,7 @@ export const stateRef = {
     btnNext: null,
     btnPlayLocal: null,
     scrollToggleBtn: null,
+    micToggleBtn: null,
     winplusToggleBtn: null,
     appBody: null,
 
@@ -133,6 +134,7 @@ export function initElements() {
 
     stateRef.btnPlayLocal = document.getElementById("btn-play-local");
     stateRef.scrollToggleBtn = document.getElementById("scrollToggleBtn");
+    stateRef.micToggleBtn = document.getElementById("micToggleBtn");
 
     stateRef.winplusToggleBtn =
         document.getElementById("winplusToggleBtn") ||

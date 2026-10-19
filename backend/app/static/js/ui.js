@@ -9,6 +9,7 @@ import { aplicarEstiloTexto, sincronizarTeleprompter, sincronizarTeleprompterIme
 import { atualizarTextoBotaoRolagem, iniciarTemporizadorDaLinha, pararRolagemContinua, prepararComandoManual } from "./scroller.js";
 import { publicarEstilo, initStorageSync } from "./storage.js";
 import { enviarAvancoManual, enviarRetornoManual, alternarPausaMotor } from "./socket.js";
+import { iniciarReconhecimentoVoz, pararReconhecimentoVoz, reconhecimentoAtivo } from "./voice.js";
 
 // Undo/Redo stack
 const undoStack = [];
@@ -55,6 +56,20 @@ function performRedo() {
 }
 
 export function initUI() {
+    if (s.micToggleBtn) {
+        s.micToggleBtn.addEventListener("click", async () => {
+            if (reconhecimentoAtivo()) {
+                pararReconhecimentoVoz();
+            } else {
+                await iniciarReconhecimentoVoz();
+            }
+            const active = reconhecimentoAtivo();
+            s.micToggleBtn.textContent = active ? "MICROFONE ATIVO" : "ATIVAR MICROFONE";
+            s.micToggleBtn.classList.toggle("active", active);
+            s.micToggleBtn.setAttribute("aria-pressed", String(active));
+        });
+    }
+
     // Capture undo state on input
     if (s.editor) {
         s.editor.addEventListener("input", () => {

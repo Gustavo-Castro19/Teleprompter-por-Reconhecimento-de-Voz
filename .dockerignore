@@ -4,3 +4,7 @@
 **/__pycache__/
 **/*.py[cod]
 models/
+backend/models/
+backend/tests/
+backend/requirements-dev.txt
+backend/README.md

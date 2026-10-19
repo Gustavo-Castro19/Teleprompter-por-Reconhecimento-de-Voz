@@ -9,7 +9,6 @@ from app.services.speech_recognizer import (
     RecognitionSource,
     RecognitionType,
 )
-from app.services.audio_manager import AudioManager, AudioDevice
 from app.services.bddf_processor import process_bddf_request, BddfPayloadError
 
 __all__ = [
@@ -23,8 +22,6 @@ __all__ = [
     "RecognitionResult",
     "RecognitionSource",
     "RecognitionType",
-    "AudioManager",
-    "AudioDevice",
     "process_bddf_request",
     "BddfPayloadError",
 ]
