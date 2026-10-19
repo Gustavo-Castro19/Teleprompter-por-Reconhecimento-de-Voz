@@ -1,5 +1,5 @@
 from flask import request
-from flask_socketio import emit, disconnect
+from flask_socketio import emit, disconnect, join_room
 
 from app.services import (
     TeleprompterState,
@@ -59,7 +59,7 @@ def _require_auth(token: str | None) -> bool:
 
 
 def emit_script_to_frontend(session):
-    first_visual = session.aligner.get_first_visual_index()
+    first_visual = session.aligner.get_visual_index(session.state.current_spoken_index)
 
     segments_frontend = [s.to_frontend() for s in session.state.segments]
     metadata_frontend = [m.to_frontend() for m in session.state.visual_metadata]
@@ -92,7 +92,6 @@ def emit_script_to_frontend(session):
     )
 
     emit_tp_display_config(session)
-    emit_audio_devices(session)
 
 
 def calculate_scroll_config(session):
@@ -130,23 +129,6 @@ def emit_tp_display_config(session):
     logger.info(f"[SOCKET] TP Display config sent to {request.sid}")
 
 
-def emit_audio_devices(session):
-    # In web version, audio comes from browser, not server
-    # But we can still list server devices for fallback
-    from app.services import AudioManager
-    audio_mgr = AudioManager()
-    try:
-        devices = [d.to_dict() for d in audio_mgr.list_devices()]
-    except Exception as e:
-        logger.error(f"Failed to list audio devices: {e}")
-        devices = []
-    finally:
-        audio_mgr.close_microphone()
-
-    socketio.emit("dispositivos_audio", {"dispositivos": devices}, to=request.sid)
-    logger.info(f"[SOCKET] Audio devices sent to {request.sid}: {len(devices)} found")
-
-
 def emit_status(session):
     socketio.emit(
         "status_motor",
@@ -156,7 +138,7 @@ def emit_status(session):
             "indiceAtual": session.state.current_spoken_index,
             "modoImproviso": session.state.is_improv(),
         },
-        to=request.sid,
+        to=session.room_id,
     )
 
 
@@ -169,13 +151,12 @@ def emit_scroll_state(session, state_type: str, reason: str = "", pause_seconds:
             "pausaSegundos": round(pause_seconds or 0.0, 2),
             "indiceFalado": session.state.current_spoken_index,
         },
-        to=request.sid,
+        to=session.room_id,
     )
 
 
 # Pydantic models for input validation
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel
 
 
 class SpeechResultData(BaseModel):
@@ -189,10 +170,6 @@ class SpeechAudioData(BaseModel):
     audio: str  # base64 encoded
 
 
-class SelectAudioDeviceData(BaseModel):
-    device_index: str | int  # "auto" or int
-
-
 # SocketIO event handlers
 def register_handlers(sio):
     init_websocket(sio)
@@ -204,16 +181,18 @@ def register_handlers(sio):
         token = None
         if auth and isinstance(auth, dict):
             token = auth.get("token")
-        # Fallback: read from query string (Socket.IO puts query params in request.args)
-        if not token:
-            token = request.args.get("token")
-
         if not token:
             logger.warning(f"Connection rejected: no auth token from {sid}")
             return False  # Reject connection
 
-        # Create session with validated token
-        session = session_manager.create_session(sid, token)
+        room_id = (auth or {}).get("teleprompter_id") if isinstance(auth, dict) else None
+        if not room_id or len(room_id) > 128:
+            logger.warning(f"Connection rejected: no valid room id from {sid}")
+            return False
+
+        # Create or join this browser's shared teleprompter session.
+        session = session_manager.create_session(sid, token, room_id)
+        join_room(room_id)
         EventLogger.client_connected()
         emit_script_to_frontend(session)
         emit_status(session)
@@ -327,34 +306,26 @@ def register_handlers(sio):
             return
         emit_tp_display_config(session)
 
-    @sio.on("solicitar_dispositivos_audio")
-    def handle_request_audio_devices(data=None):
+    @sio.on("speech_start")
+    def handle_speech_start(data=None):
         session = _get_session_or_disconnect()
         if not session:
             return
         if not _require_auth((data or {}).get("token") if data else None):
             return
-        emit_audio_devices(session)
+        mode = (data or {}).get("mode", "web")
+        ready = mode != "vosk" or session.speech_recognizer.is_vosk_ready()
+        emit("speech_ready", {"mode": mode, "ready": ready}, to=request.sid)
 
-    @sio.on("selecionar_dispositivo_audio")
-    def handle_select_audio_device(data=None):
+    @sio.on("speech_stop")
+    def handle_speech_stop(data=None):
         session = _get_session_or_disconnect()
         if not session:
             return
         if not _require_auth((data or {}).get("token") if data else None):
             return
 
-        # Validate input
-        try:
-            payload = SelectAudioDeviceData.model_validate(data or {})
-        except Exception as e:
-            logger.warning(f"Invalid audio device payload: {e}")
-            return
-
-        # For web version, audio is captured in browser; this is a no-op
-        # but we acknowledge the request
-        logger.info(f"Audio device selection requested: {payload.device_index} (web mode - ignored)")
-        emit_audio_devices(session)
+        session.speech_recognizer.reset_vosk()
 
     # Speech recognition events from frontend
     @sio.on("speech_result")

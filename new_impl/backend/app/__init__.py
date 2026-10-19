@@ -1,5 +1,6 @@
 import os
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, jsonify
+from werkzeug.exceptions import RequestEntityTooLarge
 from flask_socketio import SocketIO
 
 from app.config import get_settings
@@ -42,6 +43,14 @@ def create_app() -> Flask:
 
     app.config["SECRET_KEY"] = settings.secret_key
     app.config["ENV"] = settings.flask_env
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = settings.flask_env == "production"
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def request_too_large(_error):
+        return jsonify({"erro": "Arquivo muito grande (max 5MB)"}), 413
 
     app.register_blueprint(health_bp)
     app.register_blueprint(scripts_bp, url_prefix="/api")
@@ -57,14 +66,6 @@ def create_app() -> Flask:
     @app.route("/healthz")
     def healthz():
         return {"status": "ok"}, 200
-
-    # Readiness check - verifies Vosk model loaded
-    @app.route("/ready")
-    def ready():
-        from app.websocket.handlers import is_vosk_ready
-        if is_vosk_ready():
-            return {"status": "ready"}, 200
-        return {"status": "not ready", "reason": "vosk not initialized"}, 503
 
     logger.info(f"App created in {settings.flask_env} mode")
     return app

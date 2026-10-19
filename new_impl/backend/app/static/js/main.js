@@ -29,6 +29,7 @@ function init() {
     // Auto-start speech recognition when motor starts
     let motorStarted = false;
     s.socket.on("status_motor", (dados) => {
+        if (!window.IS_OPERATOR) return;
         if (dados.correndo && !motorStarted) {
             motorStarted = true;
             setTimeout(() => {

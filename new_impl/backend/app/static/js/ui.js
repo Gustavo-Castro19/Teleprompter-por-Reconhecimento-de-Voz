@@ -7,7 +7,7 @@ const s = stateRef;
 import { withAuth } from "./auth.js";
 import { aplicarEstiloTexto, sincronizarTeleprompter, sincronizarTeleprompterImediato, absorverRolagemContinuaNaBase, renderizarRoteiro, destacarLinha } from "./renderer.js";
 import { atualizarTextoBotaoRolagem, iniciarTemporizadorDaLinha, pararRolagemContinua, prepararComandoManual } from "./scroller.js";
-import { getAudioDevicePref, setAudioDevicePref, publicarEstilo, initStorageSync } from "./storage.js";
+import { publicarEstilo, initStorageSync } from "./storage.js";
 import { enviarAvancoManual, enviarRetornoManual, alternarPausaMotor } from "./socket.js";
 
 // Undo/Redo stack
@@ -283,22 +283,6 @@ export function initUI() {
             if (s.sidePanel) s.sidePanel.classList.remove("hidden");
             s.btnRestore.classList.add("hidden");
         };
-    }
-
-    // Audio device selector
-    if (s.audioDeviceSelect) {
-        s.audioDeviceSelect.addEventListener("change", () => {
-            const deviceIndex = s.audioDeviceSelect.value;
-            setAudioDevicePref(deviceIndex);
-            s.socket.emit("selecionar_dispositivo_audio", withAuth({ device_index: deviceIndex }));
-            console.log("[AUDIO] Dispositivo selecionado:", deviceIndex);
-        });
-
-        const salvo = getAudioDevicePref();
-        if (salvo) {
-            s.audioDeviceSelect.value = salvo;
-            s.socket.emit("selecionar_dispositivo_audio", withAuth({ device_index: salvo }));
-        }
     }
 
     // Block selection on teleprompter text

@@ -24,7 +24,6 @@ new_impl/
 │   │   │   └── bddf_processor.py
 │   │   ├── websocket/          # SocketIO handlers
 │   │   │   ├── handlers.py
-│   │   │   └── audio_stream.py
 │   │   ├── models/             # Data models
 │   │   ├── utils/              # Utilities
 │   │   │   ├── logger.py
@@ -34,6 +33,7 @@ new_impl/
 │   ├── requirements-dev.txt
 │   └── .env.example
 ├── docker-compose.yml
+├── .env.example               # Compose environment (copy to .env locally)
 ├── .github/workflows/ci.yml
 └── download_model.py
 ```
@@ -41,25 +41,30 @@ new_impl/
 ## Características Principais
 
 - **Hybrid Speech Recognition**: Web Speech API (browser) como primário, Vosk (servidor) como fallback
-- **Multi-user**: State machine por sessão (usa Redis para múltiplos workers)
+- **Multi-user**: estado isolado por sessão de navegador; `/comando` e `/tp` compartilham a sessão no mesmo navegador
 - **BDDF Processing**: Upload e processamento de roteiros BDDF via API
 - **Docker-first**: Multi-stage build, health checks, non-root user
 - **Observability**: Structured logging, health endpoints, metrics ready
 
+As sessões ficam em memória e o deploy usa um único worker. Redis não é usado.
+Para executar várias instâncias/workers, será necessário adicionar armazenamento
+compartilhado e configuração de fila Socket.IO antes de escalar.
+
 ## Desenvolvimento Local
 
 ```bash
-# 1. Baixar modelo Vosk
+# Run these commands from new_impl/
+cp .env.example .env
+# Replace SECRET_KEY with a long random value.
+
+# Download model into backend/models (mounted by Docker Compose)
 cd backend
 python download_model.py
-
-# 2. Configurar ambiente
 cp .env.example .env
-# Editar .env conforme necessário
-
-# 3. Subir com docker-compose
 cd ..
-docker-compose up --build
+
+# Start the container
+docker compose up --build
 
 # Ou rodar direto com Python
 cd backend
@@ -80,11 +85,6 @@ services:
     envVars:
       - key: SECRET_KEY
         generateValue: true
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: teleprompter-redis
-          property: connectionString
 ```
 
 ### Fly.io
@@ -150,7 +150,7 @@ FLASK_ENV = "production"
 | `retomar_motor` | `{}` | Resume |
 | `alternar_pausa` | `{}` | Toggle pause |
 | `speech_result` | `{text, isFinal, source, confidence}` | Web Speech API result |
-| `speech_audio` | `{audio: base64}` | Audio chunk for Vosk |
+| `speech_audio` | `{audio: base64}` | PCM 16 kHz mono chunk for Vosk |
 | `speech_start` | `{mode, language}` | Start recognition session |
 | `speech_stop` | `{}` | Stop recognition |
 
@@ -164,7 +164,6 @@ FLASK_ENV = "production"
 | `status_motor` | `{estado, correndo, indiceAtual, modoImproviso}` | Engine status |
 | `config_rolagem` | `{...}` | Scroll configuration |
 | `config_tp_display` | `{maxWidthVw, maxHeightVh, aspectRatio}` | Display config |
-| `dispositivos_audio` | `{dispositivos: [...]}` | Audio devices |
 
 ## Estrutura do Script (Frontend)
 

@@ -52,9 +52,6 @@
         </div>
 
         <div class="toolbar-actions">
-            <select id="audioDeviceSelect" title="Dispositivo de Áudio" style="min-width: 200px; max-width: 280px; padding: 4px 8px; border-radius: 4px; background: #1b2836; color: #ffffff; border: 1px solid #4c647d; font-size: 11px;">
-                <option value="auto">🔄 Auto (primeiro disponível)</option>
-            </select>
             <button id="invertBtn" class="btn-invert">INVERTER TELA</button>
             <button id="scrollToggleBtn" class="btn-scroll-toggle">▶ INICIAR ROLAGEM</button>
             <button id="winplusToggleBtn" class="btn-winplus-play">▣ MODO OPERADOR</button>
@@ -116,6 +113,8 @@
     <script>
         // Auth token injected by backend
         window.AUTH_TOKEN = "{{ auth_token }}";
+        window.TELEPROMPTER_ID = "{{ teleprompter_id }}";
+        window.IS_OPERATOR = {{ 'true' if is_operator else 'false' }};
     </script>
     <script type="module" src="/static/js/main.js"></script>
 </body>

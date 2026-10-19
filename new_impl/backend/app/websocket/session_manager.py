@@ -1,7 +1,6 @@
 """Per-session state management for multi-user support."""
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
@@ -22,17 +21,25 @@ class SessionData:
     scroll_controller: ScrollController
     aligner: ScriptAligner
     auth_token: str
+    room_id: str
+    sockets: set[str] = field(default_factory=set)
     created_at: float = field(default_factory=lambda: __import__('time').time())
 
 
 class SessionManager:
-    """Manages per-session state. In production with multiple workers, use Redis."""
+    """Manages in-memory teleprompter rooms for this single worker."""
 
     def __init__(self):
         self._sessions: Dict[str, SessionData] = {}
+        self._rooms: Dict[str, SessionData] = {}
         self._script_processor = ScriptProcessor()
         self._shared_speech_recognizer = HybridSpeechRecognizer()
         self._script_loaded = False
+        self._socketio = None
+
+    @property
+    def script_loaded(self) -> bool:
+        return self._script_loaded
 
     def load_script_once(self) -> None:
         """Load script once and share across sessions (read-only data)."""
@@ -49,12 +56,18 @@ class SessionManager:
         self._script_loaded = True
         logger.info("Script loaded and shared.")
 
-    def create_session(self, sid: str, auth_token: str) -> SessionData:
+    def create_session(self, sid: str, auth_token: str, room_id: str) -> SessionData:
         """Create a new session with its own mutable state."""
         if not self._script_loaded:
             self.load_script_once()
 
-        # Each session gets its own StateMachine (mutable)
+        existing = self._rooms.get(room_id)
+        if existing and existing.auth_token == auth_token:
+            existing.sockets.add(sid)
+            self._sessions[sid] = existing
+            return existing
+
+        # Each browser teleprompter room has independent mutable state.
         state = StateMachine()
         state.spoken_lines = self._default_spoken
         state.visual_lines = self._default_visual
@@ -63,10 +76,14 @@ class SessionManager:
         state.visual_metadata = self._default_visual_metadata
 
         aligner = ScriptAligner(self._default_mapping, self._default_visual)
-        scroll_controller = ScrollController(state, aligner, None)  # socketio set later
+        scroll_controller = ScrollController(state, aligner, self._socketio, room_id)
 
-        # Share the Vosk recognizer (single model in memory)
-        speech_recognizer = self._shared_speech_recognizer
+        # Decoder state is per room while the large immutable model is shared.
+        speech_recognizer = HybridSpeechRecognizer(
+            shared_model=self._shared_speech_recognizer.vosk.model
+        )
+        if self._shared_speech_recognizer.is_vosk_ready():
+            speech_recognizer.initialize_vosk()
 
         session = SessionData(
             sid=sid,
@@ -76,8 +93,11 @@ class SessionManager:
             scroll_controller=scroll_controller,
             aligner=aligner,
             auth_token=auth_token,
+            room_id=room_id,
+            sockets={sid},
         )
         self._sessions[sid] = session
+        self._rooms[room_id] = session
         logger.info(f"Created session {sid}")
         return session
 
@@ -86,7 +106,10 @@ class SessionManager:
 
     def remove_session(self, sid: str) -> None:
         if sid in self._sessions:
-            del self._sessions[sid]
+            session = self._sessions.pop(sid)
+            session.sockets.discard(sid)
+            if not session.sockets:
+                self._rooms.pop(session.room_id, None)
             logger.info(f"Removed session {sid}")
 
     def validate_token(self, sid: str, token: str) -> bool:
@@ -95,6 +118,7 @@ class SessionManager:
 
     def set_socketio(self, socketio) -> None:
         """Inject socketio instance into all session controllers."""
+        self._socketio = socketio
         for session in self._sessions.values():
             session.scroll_controller.socketio = socketio
 

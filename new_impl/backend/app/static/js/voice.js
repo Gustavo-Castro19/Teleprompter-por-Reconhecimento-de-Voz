@@ -25,7 +25,9 @@ let speechRecognition = null;
 let speechRecognitionSupported = false;
 let isSpeaking = false;
 let mediaStream = null;
-let mediaRecorder = null;
+let audioContext = null;
+let audioSource = null;
+let audioProcessor = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
@@ -152,7 +154,7 @@ function reconnectSpeech() {
 }
 
 async function switchToVoskMode() {
-    if (speechMode === SPEECH_MODE.VOSK) return;
+    if (speechMode === SPEECH_MODE.VOSK && isSpeaking) return;
 
     console.log("Switching to Vosk mode...");
     speechMode = SPEECH_MODE.VOSK;
@@ -170,32 +172,39 @@ async function switchToVoskMode() {
             },
         });
 
-        mediaRecorder = new MediaRecorder(mediaStream, { mimeType: "audio/webm" });
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const base64Audio = reader.result.split(",")[1];
-                    s.socket.emit("speech_audio", withAuth({ audio: base64Audio }));
-                };
-                reader.readAsDataURL(event.data);
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioContext = new AudioContextClass();
+        await audioContext.resume();
+        audioSource = audioContext.createMediaStreamSource(mediaStream);
+        audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+        audioProcessor.onaudioprocess = (event) => {
+            const input = event.inputBuffer.getChannelData(0);
+            const ratio = audioContext.sampleRate / 16000;
+            const outputLength = Math.floor(input.length / ratio);
+            const pcm = new Int16Array(outputLength);
+            for (let i = 0; i < outputLength; i++) {
+                const start = Math.floor(i * ratio);
+                const end = Math.min(Math.floor((i + 1) * ratio), input.length);
+                let sum = 0;
+                for (let j = start; j < end; j++) sum += input[j];
+                const sample = sum / Math.max(end - start, 1);
+                pcm[i] = Math.max(-1, Math.min(1, sample)) * (sample < 0 ? 32768 : 32767);
             }
+            event.outputBuffer.getChannelData(0).fill(0);
+            const bytes = new Uint8Array(pcm.buffer);
+            let binary = "";
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            s.socket.emit("speech_audio", withAuth({ audio: btoa(binary) }));
         };
-        mediaRecorder.onstart = () => {
-            console.log("Vosk audio recording started");
-            isSpeaking = true;
-        };
-        mediaRecorder.onstop = () => {
-            console.log("Vosk audio recording stopped");
-        };
-
+        audioSource.connect(audioProcessor);
+        audioProcessor.connect(audioContext.destination);
         s.socket.emit("speech_start", withAuth({ mode: "vosk", language: "pt-BR" }));
-
-        mediaRecorder.start(100); // Send chunks every 100ms
+        isSpeaking = true;
 
         showVoskToast("Modo offline Vosk ativado");
     } catch (err) {
         console.error("Failed to start Vosk mode:", err);
+        stopVoskMode();
         showVoskToast("Erro ao acessar microfone para Vosk", "error");
     }
 }
@@ -203,9 +212,8 @@ async function switchToVoskMode() {
 function stopVoskMode() {
     isSpeaking = false;
     try {
-        if (mediaRecorder && mediaRecorder.state !== "inactive") {
-            mediaRecorder.stop();
-        }
+        if (audioProcessor) audioProcessor.disconnect();
+        if (audioSource) audioSource.disconnect();
     } catch (e) {
         console.error("Failed to stop Vosk:", e);
     }
@@ -213,6 +221,12 @@ function stopVoskMode() {
         mediaStream.getTracks().forEach(track => track.stop());
         mediaStream = null;
     }
+    if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+    }
+    audioProcessor = null;
+    audioSource = null;
     s.socket.emit("speech_stop", withAuth({}));
 }
 

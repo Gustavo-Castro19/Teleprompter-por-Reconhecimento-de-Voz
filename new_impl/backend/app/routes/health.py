@@ -1,5 +1,6 @@
-from flask import jsonify, current_app
+from flask import jsonify
 from app.routes import health_bp
+from app.websocket.session_manager import session_manager
 
 
 @health_bp.route("/health")
@@ -9,10 +10,9 @@ def health():
 
 @health_bp.route("/ready")
 def ready():
-    # Check if Vosk model is loaded, script is loaded, etc.
     checks = {
-        "vosk_model": True,  # Will be set by app
-        "script_loaded": True,
+        "vosk_model": session_manager._shared_speech_recognizer.is_vosk_ready(),
+        "script_loaded": session_manager.script_loaded,
     }
     all_ready = all(checks.values())
     status = 200 if all_ready else 503

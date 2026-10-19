@@ -1,5 +1,5 @@
 import json
-from flask import request, jsonify, current_app
+from flask import request, jsonify
 from app.routes import scripts_bp
 from app.services.bddf_processor import process_bddf_request, BddfPayloadError
 
@@ -10,9 +10,6 @@ def upload_script():
     Upload a BDDF file or JSON payload for processing.
     Returns processed script structure for teleprompter.
     """
-    if request.content_length and request.content_length > 5 * 1024 * 1024:
-        return jsonify({"erro": "Arquivo muito grande (max 5MB)"}), 413
-
     try:
         payload = _get_upload_payload()
         result = process_bddf_request(payload)

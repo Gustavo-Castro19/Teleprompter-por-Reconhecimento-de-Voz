@@ -28,11 +28,13 @@ class ScrollController:
         self,
         state: StateMachine,
         aligner: ScriptAligner,
-        socketio
+        socketio,
+        room_id: str,
     ):
         self.state = state
         self.aligner = aligner
         self.socketio = socketio
+        self.room_id = room_id
         self.comparator = get_comparator()
 
         self.last_final_text = ""
@@ -109,7 +111,8 @@ class ScrollController:
                 "motivo": reason,
                 "pausaSegundos": round(pause_seconds or 0.0, 2),
                 "indiceFalado": self.state.current_spoken_index,
-            }
+            },
+            to=self.room_id,
         )
 
     def emit_voice_progress(
@@ -140,7 +143,8 @@ class ScrollController:
                 "cobertura": round(coverage or 0.0, 2),
                 "relevancia": round(relevance or 0.0, 2),
                 "progressoEstimado": round(progress, 2),
-            }
+            },
+            to=self.room_id,
         )
 
     def enter_improv(self, text: str):
@@ -215,7 +219,7 @@ class ScrollController:
             "pausaAposSegundos": round(pause_after, 2),
             "motivoPausa": pause_reason,
         }
-        self.socketio.emit("cmd", payload)
+        self.socketio.emit("cmd", payload, to=self.room_id)
 
         if pause_after > 0:
             self.state.change_state(TeleprompterState.VT_OR_LINK)

@@ -30,12 +30,10 @@ export function enviarAvancoManual() {
     prepararComandoManual();
     s.socket.emit("manual_next", withAuth({}));
 }
-
 export function enviarRetornoManual() {
     prepararComandoManual();
     s.socket.emit("manual_prev", withAuth({}));
 }
-
 export function alternarPausaMotor() {
     s.socket.emit("alternar_pausa", withAuth({}));
 }
@@ -44,14 +42,13 @@ export function initSocket() {
     // Create SocketIO connection with auth token (in both auth and query for compatibility)
     const token = window.AUTH_TOKEN || "";
     s.socket = io({
-        auth: { token },
-        query: { token }
+        auth: { token, teleprompter_id: window.TELEPROMPTER_ID || "" }
     });
 
     s.socket.on("connect", () => {
         console.log("Frontend conectado ao backend SocketIO.");
         console.log("ID da conexão:", s.socket.id);
-        s.socket.emit("iniciar_motor", withAuth({}));
+        if (window.IS_OPERATOR) s.socket.emit("iniciar_motor", withAuth({}));
         s.socket.emit("solicitar_config_rolagem", withAuth({}));
         console.log("Eventos iniciar_motor e solicitar_config_rolagem enviados.");
     });
@@ -122,43 +119,6 @@ export function initSocket() {
         console.log("CSS variables atualizadas para TP Display");
     });
 
-    s.socket.on("dispositivos_audio", (dados) => {
-        console.log("Dispositivos de áudio recebidos:", dados);
-
-        if (!dados || !dados.dispositivos) return;
-
-        popularDispositivosAudio(dados.dispositivos);
-    });
-
     s.socket.on("speech_ready", handleSpeechReady);
     s.socket.on("speech_error", handleSpeechError);
-}
-
-function popularDispositivosAudio(dispositivos) {
-    if (!s.audioDeviceSelect) return;
-
-    const valorAtual = s.audioDeviceSelect.value;
-
-    s.audioDeviceSelect.innerHTML = "";
-
-    const opcaoAuto = document.createElement("option");
-    opcaoAuto.value = "auto";
-    opcaoAuto.textContent = "🔄 Auto (primeiro disponível)";
-    s.audioDeviceSelect.appendChild(opcaoAuto);
-
-    dispositivos.forEach((dispositivo) => {
-        const opcao = document.createElement("option");
-        opcao.value = String(dispositivo.index);
-        opcao.textContent = `🎤 ${dispositivo.name} (ch: ${dispositivo.maxInputChannels}, ${Math.round(dispositivo.defaultSampleRate)}Hz)`;
-        s.audioDeviceSelect.appendChild(opcao);
-    });
-
-    const salvo = localStorage.getItem("tp_audio_device");
-    if (salvo) {
-        s.audioDeviceSelect.value = salvo;
-    } else if (valorAtual) {
-        s.audioDeviceSelect.value = valorAtual;
-    }
-
-    console.log(`[AUDIO] ${dispositivos.length} dispositivos carregados no dropdown`);
 }

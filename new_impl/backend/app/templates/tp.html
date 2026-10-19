@@ -73,6 +73,8 @@
     <script>
         // Auth token injected by backend
         window.AUTH_TOKEN = "{{ auth_token }}";
+        window.TELEPROMPTER_ID = "{{ teleprompter_id }}";
+        window.IS_OPERATOR = {{ 'true' if is_operator else 'false' }};
     </script>
     <script type="module" src="/static/js/main.js"></script>
 </body>

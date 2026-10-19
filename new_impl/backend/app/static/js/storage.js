@@ -10,7 +10,6 @@ const STORAGE_KEYS = {
     SUBLINHADO: "tp_sublinhado",
     ESPELHADO: "tp_espelhado",
     VELOCIDADE: "tp_velocidade",
-    AUDIO_DEVICE: "tp_audio_device",
 };
 
 let estiloTexto = {
@@ -59,14 +58,6 @@ function initStorageSync() {
     }
 }
 
-function getAudioDevicePref() {
-    return localStorage.getItem(STORAGE_KEYS.AUDIO_DEVICE);
-}
-
-function setAudioDevicePref(value) {
-    localStorage.setItem(STORAGE_KEYS.AUDIO_DEVICE, value);
-}
-
 function getVelocidadePref() {
     return fatorManualVelocidade;
 }
@@ -81,8 +72,6 @@ export {
     fatorManualVelocidade,
     getVelocidadePref,
     setVelocidadePref,
-    getAudioDevicePref,
-    setAudioDevicePref,
     salvarPreferencias,
     publicarEstilo,
     initStorageSync,

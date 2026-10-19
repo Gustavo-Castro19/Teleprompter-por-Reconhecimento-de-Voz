@@ -48,9 +48,6 @@ class Settings(BaseSettings):
     tp_max_height_vh: int = 60
     tp_aspect_ratio: str = "4/3"
 
-    # Redis (for multi-worker SocketIO)
-    redis_url: str = "redis://localhost:6379/0"
-
     # CORS - MUST be set via env var in production (comma-separated origins)
     cors_allowed_origins: str
 
@@ -97,6 +94,5 @@ CONFIG = {
         "max_height_vh": get_settings().tp_max_height_vh,
         "aspect_ratio": get_settings().tp_aspect_ratio,
     },
-    "redis_url": get_settings().redis_url,
     "cors_allowed_origins": get_settings().cors_allowed_origins,
 }

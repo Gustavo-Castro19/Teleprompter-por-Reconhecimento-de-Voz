@@ -1,5 +1,7 @@
 # Teleprompter por Reconhecimento de Voz — SQUAD 29
 
+> **Versão atual:** o código ativo foi reorganizado em [`new_impl/`](new_impl/README.md). Os caminhos e comandos deste documento descrevem a implementação antiga e não são a forma recomendada de executar a versão atual.
+
 O **Teleprompter por Reconhecimento de Voz** é um MVP desenvolvido pela **Squad 29** com o objetivo de automatizar a rolagem de um teleprompter a partir da fala do apresentador.
 
 A solução utiliza reconhecimento de voz em tempo real para identificar o trecho do roteiro que está sendo lido e, com base nisso, sincronizar a posição do texto exibido na interface. O projeto foi pensado para reduzir a dependência de operação manual, melhorar a fluidez da apresentação e diminuir riscos de dessincronia entre fala e roteiro.

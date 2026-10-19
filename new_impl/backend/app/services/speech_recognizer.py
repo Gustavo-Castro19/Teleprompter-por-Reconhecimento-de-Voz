@@ -35,8 +35,8 @@ class RecognitionResult:
 
 
 class VoskRecognizer:
-    def __init__(self):
-        self.model: Optional[Model] = None
+    def __init__(self, model: Optional[Model] = None):
+        self.model: Optional[Model] = model
         self.recognizer: Optional[KaldiRecognizer] = None
         self.sample_rate = settings.vosk_sample_rate
 
@@ -48,7 +48,8 @@ class VoskRecognizer:
 
         try:
             logger.info(f"Loading Vosk model from: {model_path}")
-            self.model = Model(model_path)
+            if self.model is None:
+                self.model = Model(model_path)
             self.recognizer = KaldiRecognizer(self.model, self.sample_rate)
             self.recognizer.Reset()
             logger.info("Vosk recognizer initialized successfully")
@@ -89,8 +90,8 @@ class HybridSpeechRecognizer:
     This service handles Vosk processing for the fallback path.
     """
 
-    def __init__(self):
-        self.vosk = VoskRecognizer()
+    def __init__(self, shared_model: Optional[Model] = None):
+        self.vosk = VoskRecognizer(shared_model)
         self.vosk_ready = False
 
     def initialize_vosk(self) -> bool:

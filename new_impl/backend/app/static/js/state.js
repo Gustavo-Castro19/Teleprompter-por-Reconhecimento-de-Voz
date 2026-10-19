@@ -29,7 +29,6 @@ export const stateRef = {
     scrollToggleBtn: null,
     winplusToggleBtn: null,
     appBody: null,
-    audioDeviceSelect: null,
 
     // Mutable socket holder
     socket: null,
@@ -140,7 +139,6 @@ export function initElements() {
         document.getElementById("btn-winplus-toggle");
 
     stateRef.appBody = document.getElementById("app-body");
-    stateRef.audioDeviceSelect = document.getElementById("audioDeviceSelect");
 
     try {
         stateRef.canal = new BroadcastChannel("tp_channel");
