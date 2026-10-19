@@ -1,3 +1,4 @@
+import secrets
 from flask import render_template, current_app, send_from_directory
 from app.routes import teleprompter_bp
 
@@ -9,12 +10,16 @@ def index():
 
 @teleprompter_bp.route("/comando")
 def comando():
-    return render_template("comando.html")
+    # Generate short-lived auth token for SocketIO connection
+    auth_token = secrets.token_urlsafe(32)
+    return render_template("comando.html", auth_token=auth_token)
 
 
 @teleprompter_bp.route("/tp")
 def teleprompter():
-    return render_template("tp.html")
+    # Display page also needs token for sync
+    auth_token = secrets.token_urlsafe(32)
+    return render_template("tp.html", auth_token=auth_token)
 
 
 @teleprompter_bp.route("/static/<path:filename>")

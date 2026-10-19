@@ -70,6 +70,10 @@
     </aside>
 
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <script src="/static/js/script.js"></script>
+    <script>
+        // Auth token injected by backend
+        window.AUTH_TOKEN = "{{ auth_token }}";
+    </script>
+    <script type="module" src="/static/js/main.js"></script>
 </body>
 </html>

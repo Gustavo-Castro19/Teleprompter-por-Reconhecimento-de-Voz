@@ -26,12 +26,13 @@ class AudioDevice:
 
 class AudioManager:
     def __init__(self):
-        self.p: Optional[pyaudio.PyAudio] = None
+        self.p: Optional[pyaudio.PyAudio] = pyaudio.PyAudio()
         self.stream = None
         self.device_index: Optional[int] = None
+        self._closed = False
 
     def _ensure_pyaudio(self):
-        if self.p is None:
+        if self.p is None and not self._closed:
             self.p = pyaudio.PyAudio()
 
     def list_devices(self) -> list[AudioDevice]:
@@ -137,6 +138,11 @@ class AudioManager:
                 self.p = None
         except Exception as e:
             logger.warning(f"Error terminating PyAudio: {e}")
+        self._closed = True
+
+    def __del__(self):
+        """Ensure PyAudio is terminated on garbage collection."""
+        self.close_microphone()
 
     def get_current_device(self) -> Optional[AudioDevice]:
         if self.device_index is not None and self.p:

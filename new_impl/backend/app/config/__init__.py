@@ -3,8 +3,8 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # Flask
-    secret_key: str = "squad29_dev_key"
+    # Flask - MUST be set via env var in production
+    secret_key: str
     flask_env: str = "development"
 
     # Server
@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     habilitar_improviso: bool = True
     min_palavras_improviso: int = 3
 
+    # Stop words for text comparison (JSON file path, or empty for built-in PT-BR)
+    stop_words_path: str = ""
+
     # Scroll
     velocidade_minima_rolagem: float = 0.05
     velocidade_maxima_rolagem: float = 3.0
@@ -48,8 +51,8 @@ class Settings(BaseSettings):
     # Redis (for multi-worker SocketIO)
     redis_url: str = "redis://localhost:6379/0"
 
-    # CORS
-    cors_allowed_origins: str = "*"
+    # CORS - MUST be set via env var in production (comma-separated origins)
+    cors_allowed_origins: str
 
     class Config:
         env_file = ".env"
@@ -86,6 +89,7 @@ CONFIG = {
     "score_minimo_andamento_voz": get_settings().score_minimo_andamento_voz,
     "habilitar_improviso": get_settings().habilitar_improviso,
     "min_palavras_improviso": get_settings().min_palavras_improviso,
+    "stop_words_path": get_settings().stop_words_path,
     "velocidade_minima_rolagem": get_settings().velocidade_minima_rolagem,
     "velocidade_maxima_rolagem": get_settings().velocidade_maxima_rolagem,
     "tp_display": {

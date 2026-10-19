@@ -10,8 +10,11 @@ from app.utils.logger import setup_logging, get_logger
 logger = get_logger(__name__)
 settings = get_settings()
 
+# Parse CORS origins from comma-separated string
+cors_origins = [o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()]
+
 socketio = SocketIO(
-    cors_allowed_origins=settings.cors_allowed_origins,
+    cors_allowed_origins=cors_origins,
     async_mode="eventlet",
     ping_timeout=60,
     ping_interval=25,
@@ -37,10 +40,6 @@ def create_app() -> Flask:
         static_folder=static_dir,
     )
 
-    if settings.flask_env == "production" and settings.secret_key == "squad29_dev_key":
-        raise RuntimeError("SECRET_KEY must be set in production")
-    if settings.flask_env == "production" and settings.cors_allowed_origins == "*":
-        raise RuntimeError("CORS_ALLOWED_ORIGINS must be set in production")
     app.config["SECRET_KEY"] = settings.secret_key
     app.config["ENV"] = settings.flask_env
 
@@ -58,6 +57,14 @@ def create_app() -> Flask:
     @app.route("/healthz")
     def healthz():
         return {"status": "ok"}, 200
+
+    # Readiness check - verifies Vosk model loaded
+    @app.route("/ready")
+    def ready():
+        from app.websocket.handlers import is_vosk_ready
+        if is_vosk_ready():
+            return {"status": "ready"}, 200
+        return {"status": "not ready", "reason": "vosk not initialized"}, 503
 
     logger.info(f"App created in {settings.flask_env} mode")
     return app

@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   app:
@@ -10,9 +9,9 @@ services:
     environment:
       - FLASK_ENV=production
       - VOSK_MODEL_PATH=/app/models/vosk-model-pt
-      - SECRET_KEY=${SECRET_KEY:-squad29_change_in_production}
+      - SECRET_KEY=${SECRET_KEY}  # REQUIRED: no default, must be set
       - REDIS_URL=redis://redis:6379/0
-      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}  # REQUIRED: comma-separated, no default
     volumes:
       - ./models:/app/models:ro
       - ./backend/roteiros:/app/backend/roteiros:ro

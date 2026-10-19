@@ -1,0 +1,24 @@
+{
+  "pt-BR": [
+    "a", "o", "e", "de", "do", "da", "dos", "das",
+    "em", "no", "na", "nos", "nas", "um", "uma",
+    "para", "pra", "com", "por", "que", "se",
+    "ao", "as", "os", "ou", "e", "é", "do", "da"
+  ],
+  "en": [
+    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+    "of", "with", "by", "from", "as", "is", "was", "are", "were", "be",
+    "been", "being", "have", "has", "had", "do", "does", "did", "will",
+    "would", "could", "should", "may", "might", "must", "can", "this",
+    "that", "these", "those", "i", "you", "he", "she", "it", "we", "they",
+    "me", "him", "her", "us", "them", "my", "your", "his", "its", "our",
+    "their", "mine", "yours", "hers", "ours", "theirs"
+  ],
+  "es": [
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "y", "e", "o",
+    "u", "de", "del", "en", "con", "por", "para", "a", "al", "se", "su",
+    "sus", "mi", "mis", "tu", "tus", "lo", "los", "las", "le", "les", "me",
+    "te", "nos", "os", "as", "que", "quien", "cual", "cuales", "como",
+    "donde", "cuando", "porque", "pero", "sino", "si", "no", "ya", "tambien"
+  ]
+}

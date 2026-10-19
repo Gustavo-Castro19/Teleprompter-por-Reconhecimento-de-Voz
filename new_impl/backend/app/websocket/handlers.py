@@ -1,64 +1,83 @@
 from flask import request
-from flask_socketio import emit, join_room, leave_room
+from flask_socketio import emit, disconnect
 
-from app.services import StateMachine, TeleprompterState, ScrollController, ScriptAligner, HybridSpeechRecognizer
-from app.services.script_processor import ScriptProcessor
+from app.services import (
+    TeleprompterState,
+    ScrollController,
+    HybridSpeechRecognizer,
+    RecognitionType,
+)
 from app.utils.logger import EventLogger, get_logger
+from app.websocket.session_manager import session_manager
 
 logger = get_logger(__name__)
 
-# Global state (in production, use Redis for multi-worker)
-state = StateMachine()
-script_processor = ScriptProcessor()
-speech_recognizer = HybridSpeechRecognizer()
-scroll_controller: ScrollController | None = None
-aligner: ScriptAligner | None = None
 socketio = None
 
 
 def init_websocket(sio):
-    global socketio, scroll_controller, aligner
+    global socketio
     socketio = sio
 
-    # Load script
-    logger.info("Loading script...")
-    spoken, visual, mapping = script_processor.load_script()
+    # Load script once (shared read-only data)
+    session_manager.load_script_once()
 
-    state.spoken_lines = spoken
-    state.visual_lines = visual
-    state.spoken_to_visual_map = mapping
-    state.segments = script_processor.segments
-    state.visual_metadata = script_processor.visual_metadata
-
-    aligner = ScriptAligner(mapping, visual)
-    scroll_controller = ScrollController(state, aligner, socketio)
-
-    if not speech_recognizer.initialize_vosk():
+    # Initialize shared Vosk recognizer
+    if not session_manager._shared_speech_recognizer.initialize_vosk():
         logger.warning("Vosk not initialized - Web Speech API only mode")
+
+    # Inject socketio into session manager for later session creation
+    session_manager.set_socketio(socketio)
 
     logger.info("WebSocket handlers ready")
 
 
-def emit_script_to_frontend():
-    from flask import request
-    first_visual = aligner.get_first_visual_index() if aligner else 0
+def is_vosk_ready() -> bool:
+    """Check if Vosk model is loaded and ready."""
+    return session_manager._shared_speech_recognizer.is_vosk_ready()
 
-    segments_frontend = [s.to_frontend() for s in state.segments]
-    metadata_frontend = [m.to_frontend() for m in state.visual_metadata]
-    scroll_config = calculate_scroll_config()
+
+def _get_session_or_disconnect() -> "SessionData | None":
+    """Get session for current request.sid, disconnect if invalid."""
+    sid = request.sid
+    session = session_manager.get_session(sid)
+    if not session:
+        logger.warning(f"No session found for {sid}, disconnecting")
+        disconnect()
+        return None
+    return session
+
+
+def _require_auth(token: str | None) -> bool:
+    """Validate auth token for current session."""
+    sid = request.sid
+    if not session_manager.validate_token(sid, token or ""):
+        logger.warning(f"Invalid auth token for {sid}")
+        disconnect()
+        return False
+    return True
+
+
+def emit_script_to_frontend(session):
+    first_visual = session.aligner.get_first_visual_index()
+
+    segments_frontend = [s.to_frontend() for s in session.state.segments]
+    metadata_frontend = [m.to_frontend() for m in session.state.visual_metadata]
+    scroll_config = calculate_scroll_config(session)
 
     emit(
         "roteiro",
         {
-            "linhas": state.visual_lines,
+            "linhas": session.state.visual_lines,
             "indiceAtual": first_visual,
             "segmentos": segments_frontend,
             "metadadosLinhas": metadata_frontend,
             "configRolagem": scroll_config,
         },
+        to=request.sid,
     )
 
-    emit("config_rolagem", scroll_config)
+    emit("config_rolagem", scroll_config, to=request.sid)
 
     emit(
         "cmd",
@@ -69,15 +88,16 @@ def emit_script_to_frontend():
             "segmento": None,
             "pausaAposSegundos": 0,
         },
+        to=request.sid,
     )
 
-    emit_tp_display_config()
-    emit_audio_devices()
+    emit_tp_display_config(session)
+    emit_audio_devices(session)
 
 
-def calculate_scroll_config():
-    segments = state.segments
-    visual_meta = state.visual_metadata
+def calculate_scroll_config(session):
+    segments = session.state.segments
+    visual_meta = session.state.visual_metadata
 
     speech_time = sum(s.estimated_time or 0.0 for s in segments)
     pause_time = sum(
@@ -90,7 +110,7 @@ def calculate_scroll_config():
         "palavrasPorMinutoBase": 150,
         "totalPalavrasFalaveis": total_words,
         "totalSegmentosFalaveis": len(segments),
-        "totalLinhasVisuais": len(state.visual_lines),
+        "totalLinhasVisuais": len(session.state.visual_lines),
         "tempoTotalFalaSegundos": round(speech_time, 2),
         "tempoTotalPausasTecnicasSegundos": round(pause_time, 2),
         "tempoTotalEstimadoSegundos": round(speech_time + pause_time, 2),
@@ -100,17 +120,17 @@ def calculate_scroll_config():
     }
 
 
-def emit_tp_display_config():
+def emit_tp_display_config(session):
     config = {
         "maxWidthVw": 90,
         "maxHeightVh": 60,
         "aspectRatio": "4/3",
     }
-    socketio.emit("config_tp_display", config)
-    logger.info(f"[SOCKET] TP Display config sent: {config}")
+    socketio.emit("config_tp_display", config, to=request.sid)
+    logger.info(f"[SOCKET] TP Display config sent to {request.sid}")
 
 
-def emit_audio_devices():
+def emit_audio_devices(session):
     # In web version, audio comes from browser, not server
     # But we can still list server devices for fallback
     from app.services import AudioManager
@@ -123,32 +143,54 @@ def emit_audio_devices():
     finally:
         audio_mgr.close_microphone()
 
-    socketio.emit("dispositivos_audio", {"dispositivos": devices})
-    logger.info(f"[SOCKET] Audio devices sent: {len(devices)} found")
+    socketio.emit("dispositivos_audio", {"dispositivos": devices}, to=request.sid)
+    logger.info(f"[SOCKET] Audio devices sent to {request.sid}: {len(devices)} found")
 
 
-def emit_status():
+def emit_status(session):
     socketio.emit(
         "status_motor",
         {
-            "estado": state.state.value,
-            "correndo": state.running,
-            "indiceAtual": state.current_spoken_index,
-            "modoImproviso": state.is_improv(),
-        }
+            "estado": session.state.state.value,
+            "correndo": session.state.running,
+            "indiceAtual": session.state.current_spoken_index,
+            "modoImproviso": session.state.is_improv(),
+        },
+        to=request.sid,
     )
 
 
-def emit_scroll_state(state_type: str, reason: str = "", pause_seconds: float = 0):
+def emit_scroll_state(session, state_type: str, reason: str = "", pause_seconds: float = 0):
     socketio.emit(
         "estado_rolagem",
         {
             "tipo": state_type,
             "motivo": reason,
             "pausaSegundos": round(pause_seconds or 0.0, 2),
-            "indiceFalado": state.current_spoken_index,
-        }
+            "indiceFalado": session.state.current_spoken_index,
+        },
+        to=request.sid,
     )
+
+
+# Pydantic models for input validation
+from pydantic import BaseModel, Field
+from typing import Optional
+
+
+class SpeechResultData(BaseModel):
+    text: str = ""
+    isFinal: bool = False
+    source: str = "web"
+    confidence: float = 0.0
+
+
+class SpeechAudioData(BaseModel):
+    audio: str  # base64 encoded
+
+
+class SelectAudioDeviceData(BaseModel):
+    device_index: str | int  # "auto" or int
 
 
 # SocketIO event handlers
@@ -157,114 +199,214 @@ def register_handlers(sio):
 
     @sio.on("connect")
     def handle_connect(auth=None):
+        sid = request.sid
+        # Auth token must be provided in auth dict or query string
+        token = None
+        if auth and isinstance(auth, dict):
+            token = auth.get("token")
+        # Fallback: read from query string (Socket.IO puts query params in request.args)
+        if not token:
+            token = request.args.get("token")
+
+        if not token:
+            logger.warning(f"Connection rejected: no auth token from {sid}")
+            return False  # Reject connection
+
+        # Create session with validated token
+        session = session_manager.create_session(sid, token)
         EventLogger.client_connected()
-        emit_script_to_frontend()
-        emit_status()
+        emit_script_to_frontend(session)
+        emit_status(session)
 
     @sio.on("disconnect")
     def handle_disconnect():
-        logger.info(f"Client disconnected: {request.sid}")
+        sid = request.sid
+        logger.info(f"Client disconnected: {sid}")
+        session_manager.remove_session(sid)
 
     @sio.on("iniciar_motor")
-    def handle_start_engine():
-        logger.info("[SOCKET] Engine start requested")
-        state.running = True
-        state.change_state(TeleprompterState.AUTOMATIC)
-        emit_status()
-        emit_scroll_state("AUTOMATICO", "Motor iniciado")
-
-    @sio.on("solicitar_config_rolagem")
-    def handle_request_scroll_config():
-        socketio.emit("config_rolagem", calculate_scroll_config())
-
-    @sio.on("manual_next")
-    def handle_manual_next():
-        target = state.current_spoken_index + 1
-        if target < len(state.spoken_lines):
-            scroll_controller.send_command(target, "next", "Avanço manual")
-        emit_status()
-
-    @sio.on("manual_prev")
-    def handle_manual_prev():
-        target = max(state.current_spoken_index - 1, 0)
-        scroll_controller.send_command(target, "back", "Retorno manual")
-        emit_status()
-
-    @sio.on("pausar_motor")
-    def handle_pause():
-        if not state.is_finished():
-            state.change_state(TeleprompterState.PAUSED)
-            emit_scroll_state("PAUSADO", "Pausa manual")
-        emit_status()
-
-    @sio.on("retomar_motor")
-    def handle_resume():
-        if not state.is_finished():
-            state.change_state(TeleprompterState.AUTOMATIC)
-            emit_scroll_state("AUTOMATICO", "Retomada manual")
-        emit_status()
-
-    @sio.on("alternar_pausa")
-    def handle_toggle_pause():
-        if state.is_finished():
-            emit_status()
+    def handle_start_engine(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
             return
 
-        if state.is_paused():
-            state.change_state(TeleprompterState.AUTOMATIC)
-            emit_scroll_state("AUTOMATICO", "Retomada manual")
+        logger.info(f"[SOCKET] Engine start requested by {request.sid}")
+        session.state.running = True
+        session.state.change_state(TeleprompterState.AUTOMATIC)
+        emit_status(session)
+        emit_scroll_state(session, "AUTOMATICO", "Motor iniciado")
+
+    @sio.on("solicitar_config_rolagem")
+    def handle_request_scroll_config(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
+            return
+        emit("config_rolagem", calculate_scroll_config(session), to=request.sid)
+
+    @sio.on("manual_next")
+    def handle_manual_next(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
+            return
+
+        target = session.state.current_spoken_index + 1
+        if target < len(session.state.spoken_lines):
+            session.scroll_controller.send_command(target, "next", "Avanço manual")
+        emit_status(session)
+
+    @sio.on("manual_prev")
+    def handle_manual_prev(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
+            return
+
+        target = max(session.state.current_spoken_index - 1, 0)
+        session.scroll_controller.send_command(target, "back", "Retorno manual")
+        emit_status(session)
+
+    @sio.on("pausar_motor")
+    def handle_pause(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
+            return
+
+        if not session.state.is_finished():
+            session.state.change_state(TeleprompterState.PAUSED)
+            emit_scroll_state(session, "PAUSADO", "Pausa manual")
+        emit_status(session)
+
+    @sio.on("retomar_motor")
+    def handle_resume(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
+            return
+
+        if not session.state.is_finished():
+            session.state.change_state(TeleprompterState.AUTOMATIC)
+            emit_scroll_state(session, "AUTOMATICO", "Retomada manual")
+        emit_status(session)
+
+    @sio.on("alternar_pausa")
+    def handle_toggle_pause(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
+            return
+
+        if session.state.is_finished():
+            emit_status(session)
+            return
+
+        if session.state.is_paused():
+            session.state.change_state(TeleprompterState.AUTOMATIC)
+            emit_scroll_state(session, "AUTOMATICO", "Retomada manual")
         else:
-            state.change_state(TeleprompterState.PAUSED)
-            emit_scroll_state("PAUSADO", "Pausa manual")
-        emit_status()
+            session.state.change_state(TeleprompterState.PAUSED)
+            emit_scroll_state(session, "PAUSADO", "Pausa manual")
+        emit_status(session)
 
     @sio.on("solicitar_config_tp_display")
-    def handle_request_tp_config():
-        emit_tp_display_config()
+    def handle_request_tp_config(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
+            return
+        emit_tp_display_config(session)
 
     @sio.on("solicitar_dispositivos_audio")
-    def handle_request_audio_devices():
-        emit_audio_devices()
+    def handle_request_audio_devices(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
+            return
+        emit_audio_devices(session)
+
+    @sio.on("selecionar_dispositivo_audio")
+    def handle_select_audio_device(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
+            return
+
+        # Validate input
+        try:
+            payload = SelectAudioDeviceData.model_validate(data or {})
+        except Exception as e:
+            logger.warning(f"Invalid audio device payload: {e}")
+            return
+
+        # For web version, audio is captured in browser; this is a no-op
+        # but we acknowledge the request
+        logger.info(f"Audio device selection requested: {payload.device_index} (web mode - ignored)")
+        emit_audio_devices(session)
 
     # Speech recognition events from frontend
     @sio.on("speech_result")
-    def handle_speech_result(data):
-        """Handle Web Speech API results from frontend"""
-        if not data:
+    def handle_speech_result(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
             return
 
-        text = data.get("text", "")
-        is_final = data.get("isFinal", False)
-        source = data.get("source", "web")
-        confidence = data.get("confidence", 0.0)
+        try:
+            payload = SpeechResultData.model_validate(data or {})
+        except Exception as e:
+            logger.warning(f"Invalid speech_result payload: {e}")
+            return
 
-        if source == "web":
-            result = speech_recognizer.process_web_speech(text, is_final, confidence)
-            _process_recognition_result(result)
+        if payload.source == "web":
+            result = session.speech_recognizer.process_web_speech(
+                payload.text, payload.isFinal, payload.confidence
+            )
+            _process_recognition_result(session, result)
 
     @sio.on("speech_audio")
-    def handle_speech_audio(data):
-        """Handle audio chunks for Vosk fallback"""
-        if not data or "audio" not in data:
+    def handle_speech_audio(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return
+        if not _require_auth((data or {}).get("token") if data else None):
             return
 
-        audio_b64 = data.get("audio")
-        result = speech_recognizer.process_vosk_audio(audio_b64)
-        _process_recognition_result(result)
+        try:
+            payload = SpeechAudioData.model_validate(data or {})
+        except Exception as e:
+            logger.warning(f"Invalid speech_audio payload: {e}")
+            return
+
+        result = session.speech_recognizer.process_vosk_audio(payload.audio)
+        _process_recognition_result(session, result)
 
 
-def _process_recognition_result(result):
+def _process_recognition_result(session, result):
     if result.type == RecognitionType.ERROR:
         logger.error("Speech recognition error")
         return
 
     if result.type == RecognitionType.PARTIAL:
-        scroll_controller.evaluate_partial(result.text, allow_advance=True)
+        session.scroll_controller.evaluate_partial(result.text, allow_advance=True)
     elif result.type == RecognitionType.FINAL:
-        decision = scroll_controller.evaluate_final(result.text)
+        decision = session.scroll_controller.evaluate_final(result.text)
         if decision.should_advance and decision.target_index is not None:
             segment = decision.segment
-            scroll_controller.send_command(
+            session.scroll_controller.send_command(
                 decision.target_index,
                 decision.event_type,
                 segment.spoken_text if segment else ""
