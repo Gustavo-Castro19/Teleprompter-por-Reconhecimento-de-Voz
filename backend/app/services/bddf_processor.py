@@ -148,12 +148,12 @@ def _extract_lines(value: str) -> list[str]:
     )
     clean = re.sub(
         r"<pi\b[^>]*>(.*?)</pi>",
-        lambda match: _keep_command_or_remove(match.group(1)),
+        lambda match: _strip_inline_markup(match.group(1)),
         clean,
         flags=re.I | re.S,
     )
     clean = re.sub(r"<[^>]+>", "\n", clean)
-    clean = clean.replace("\r", "\n").replace("/", " ")
+    clean = clean.replace("\r", "\n")
     clean = re.sub(r"\{\{.*?\}\}|\{.*?\}", lambda match: match.group(0), clean, flags=re.S)
 
     for line in clean.splitlines():
@@ -183,10 +183,9 @@ def _is_technical_line(line: str) -> bool:
     return any(word in upper_line for word in _TECHNICAL_WORDS)
 
 
-def _keep_command_or_remove(value: str) -> str:
+def _strip_inline_markup(value: str) -> str:
     value = re.sub(r"<[^>]+>", "", value)
-    value = value.strip()
-    return value if _is_command(value) else "\n"
+    return value.strip()
 
 
 def _is_command(value: str) -> bool:

@@ -46,7 +46,7 @@ export const stateRef = {
     deslocamentoBaseDisplay: 0,
     alvoDeslocamentoBaseEditor: 0,
     alvoDeslocamentoBaseDisplay: 0,
-    suavidadeSincronizacao: 0.10,
+    tempoSincronizacaoMs: 180,
     deslocamentoManual: 0,
     motorPausado: true,
 
@@ -72,7 +72,7 @@ export const stateRef = {
 
     // Constants
     TEMPO_SEM_MATCH_IMPROVISO_MS: 2200,
-    SUAVIDADE_VELOCIDADE_VOZ: 0.08,
+    TEMPO_AJUSTE_VOZ_MS: 180,
 
     // Line timing
     tempoInicioLinhaAtual: null,

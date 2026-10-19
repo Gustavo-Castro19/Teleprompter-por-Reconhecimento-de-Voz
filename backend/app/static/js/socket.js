@@ -8,6 +8,7 @@ import { withAuth } from "./auth.js";
 // io is loaded globally from CDN script tag
 const io = window.io;
 import {
+    renderizarRoteiro,
     sincronizarTeleprompter,
     sincronizarTeleprompterImediato,
     absorverRolagemContinuaNaBase,

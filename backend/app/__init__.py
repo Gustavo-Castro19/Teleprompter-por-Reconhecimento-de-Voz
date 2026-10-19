@@ -17,6 +17,7 @@ cors_origins = [o.strip() for o in settings.cors_allowed_origins.split(",") if o
 socketio = SocketIO(
     cors_allowed_origins=cors_origins,
     async_mode="eventlet",
+    max_http_buffer_size=6 * 1024 * 1024,
     ping_timeout=60,
     ping_interval=25,
     logger=False,

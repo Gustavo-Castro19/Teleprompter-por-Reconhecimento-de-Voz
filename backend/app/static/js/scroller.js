@@ -177,23 +177,27 @@ export function animarRolagemContinua(timestamp) {
         s.ultimoFrame = timestamp;
     }
 
-    const delta = timestamp - s.ultimoFrame;
+    // Ignore excess elapsed time after a stalled/background frame so the
+    // teleprompter never catches up with one visible jump.
+    const delta = Math.min(timestamp - s.ultimoFrame, 50);
     s.ultimoFrame = timestamp;
 
-    // Smooth sync of base offsets
+    const alinhamento = 1 - Math.exp(-delta / s.tempoSincronizacaoMs);
+    const ajusteVoz = 1 - Math.exp(-delta / s.TEMPO_AJUSTE_VOZ_MS);
+
     s.deslocamentoBaseEditor +=
         (s.alvoDeslocamentoBaseEditor - s.deslocamentoBaseEditor) *
-        s.suavidadeSincronizacao;
+        alinhamento;
 
     s.deslocamentoBaseDisplay +=
         (s.alvoDeslocamentoBaseDisplay - s.deslocamentoBaseDisplay) *
-        s.suavidadeSincronizacao;
+        alinhamento;
 
     verificarFimPausaTecnica(timestamp);
 
     s.velocidadeVozFatorAtual +=
         (s.velocidadeVozFatorAlvo - s.velocidadeVozFatorAtual) *
-        s.SUAVIDADE_VELOCIDADE_VOZ;
+        ajusteVoz;
 
     const distanciaEditor = Math.abs(s.alvoDeslocamentoBaseEditor - s.deslocamentoBaseEditor);
     const distanciaDisplay = Math.abs(s.alvoDeslocamentoBaseDisplay - s.deslocamentoBaseDisplay);

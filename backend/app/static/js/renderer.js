@@ -216,6 +216,11 @@ export function absorverRolagemContinuaNaBase() {
     s.ultimoFrame = null;
 }
 
+function iniciarTemporizadorDaLinha() {
+    s.tempoInicioLinhaAtual = performance.now();
+    s.duracaoLinhaAtualMs = obterDuracaoLinhaAtualSegundos() * 1000;
+}
+
 export function obterDuracaoLinhaAtualSegundos() {
     const segmento = obterSegmentoPorVisual(s.indiceAtualVisual);
     const meta = obterMetaLinhaVisual(s.indiceAtualVisual);

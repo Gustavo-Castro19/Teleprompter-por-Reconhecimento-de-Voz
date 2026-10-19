@@ -82,6 +82,8 @@ class ScrollController:
         return best_idx, best_score, best_sim, best_cov, best_rel
 
     def min_score_for_distance(self, distance: int) -> Optional[float]:
+        if distance == -1:
+            return 0.82
         if distance == 0:
             return 0.55
         if distance == 1:
@@ -315,6 +317,9 @@ class ScrollController:
         return ScrollDecision(False)
 
     def evaluate_partial(self, text: str, allow_advance: bool = True) -> bool:
+        if not self.state.can_evaluate_audio():
+            return False
+
         normalized = self.comparator.normalizer.normalize(text)
 
         if normalized == self.last_partial_processed:

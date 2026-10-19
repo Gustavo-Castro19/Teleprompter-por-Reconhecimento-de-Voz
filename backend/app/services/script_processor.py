@@ -90,10 +90,9 @@ class ScriptProcessor:
     def remove_technical_for_spoken(self, text: str) -> str:
         if not text:
             return ""
-        text = self.ensure_text(text)
-        text = text.replace("\r\r\n", "\n").replace("\r", "\n")
-        text = self.PI_TAG_PATTERN.sub(" ", text)
-        text = self.HTML_TAG_PATTERN.sub("\n", text)
+        # Strip markup the same way as the visual version so spoken lines keep
+        # the same line positions when they are mapped back to the prompter.
+        text = self.remove_html_preserve_text(text)
         text = self.COMMAND_PATTERN.sub(" ", text)
         text = self.BRACE_PATTERN.sub(" ", text)
         text = self.BRACKET_PATTERN.sub(" ", text)

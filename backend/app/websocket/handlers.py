@@ -7,6 +7,8 @@ from app.services import (
     HybridSpeechRecognizer,
     RecognitionType,
 )
+from app.models import ScriptSegment, VisualLineMeta
+from app.services.bddf_processor import BddfPayloadError, process_bddf_request
 from app.utils.logger import EventLogger, get_logger
 from app.websocket.session_manager import session_manager
 
@@ -58,7 +60,7 @@ def _require_auth(token: str | None) -> bool:
     return True
 
 
-def emit_script_to_frontend(session):
+def emit_script_to_frontend(session, target=None):
     first_visual = session.aligner.get_visual_index(session.state.current_spoken_index)
 
     segments_frontend = [s.to_frontend() for s in session.state.segments]
@@ -74,10 +76,10 @@ def emit_script_to_frontend(session):
             "metadadosLinhas": metadata_frontend,
             "configRolagem": scroll_config,
         },
-        to=request.sid,
+        to=target or request.sid,
     )
 
-    emit("config_rolagem", scroll_config, to=request.sid)
+    emit("config_rolagem", scroll_config, to=target or request.sid)
 
     emit(
         "cmd",
@@ -88,10 +90,10 @@ def emit_script_to_frontend(session):
             "segmento": None,
             "pausaAposSegundos": 0,
         },
-        to=request.sid,
+        to=target or request.sid,
     )
 
-    emit_tp_display_config(session)
+    emit_tp_display_config(session, target=target)
 
 
 def calculate_scroll_config(session):
@@ -119,14 +121,15 @@ def calculate_scroll_config(session):
     }
 
 
-def emit_tp_display_config(session):
+def emit_tp_display_config(session, target=None):
     config = {
         "maxWidthVw": 90,
         "maxHeightVh": 60,
         "aspectRatio": "4/3",
     }
-    socketio.emit("config_tp_display", config, to=request.sid)
-    logger.info(f"[SOCKET] TP Display config sent to {request.sid}")
+    destination = target or request.sid
+    socketio.emit("config_tp_display", config, to=destination)
+    logger.info(f"[SOCKET] TP Display config sent to {destination}")
 
 
 def emit_status(session):
@@ -168,6 +171,82 @@ class SpeechResultData(BaseModel):
 
 class SpeechAudioData(BaseModel):
     audio: str  # base64 encoded
+
+
+def _load_processed_script(session, payload):
+    parsed = process_bddf_request(payload)
+    visual_lines = []
+    visual_line_types = []
+    spoken_lines = []
+    spoken_to_visual = []
+    segments = []
+    visual_metadata = []
+    processor = session.script_processor
+
+    for program in parsed["programs"]:
+        for block in program["blocks"]:
+            for subblock in block["subblocks"]:
+                is_technical = subblock["type"] == "technical"
+                for line in subblock["lines"]:
+                    visual_index = len(visual_lines)
+                    line_type = processor.classify_visual_line(line) if is_technical else "fala"
+                    visual_lines.append(line)
+                    visual_line_types.append(line_type)
+
+                    duration = 0.0
+                    if not is_technical and processor.is_spoken_line(line):
+                        spoken_index = len(spoken_lines)
+                        duration = round(processor.estimate_reading_time(line), 2)
+                        spoken_lines.append(line)
+                        spoken_to_visual.append(visual_index)
+                        segments.append(
+                            ScriptSegment(
+                                spoken_text=line,
+                                visual_text=line,
+                                spoken_index=spoken_index,
+                                visual_index=visual_index,
+                                estimated_time=duration,
+                            )
+                        )
+
+                    visual_metadata.append(
+                        VisualLineMeta(
+                            visual_index=visual_index,
+                            visual_text=line,
+                            line_type=line_type,
+                            duration_seconds=duration,
+                            time_source="estimativa_por_palavras" if duration else "sem_tempo",
+                        )
+                    )
+
+    if not visual_lines:
+        raise BddfPayloadError("O arquivo não contém linhas de roteiro reconhecíveis.")
+    if not spoken_lines:
+        raise BddfPayloadError("O arquivo não contém falas reconhecíveis para acompanhar por voz.")
+
+    state = session.state
+    state.visual_lines = visual_lines
+    state.visual_line_types = visual_line_types
+    state.spoken_lines = spoken_lines
+    state.spoken_to_visual_map = spoken_to_visual
+    state.segments = segments
+    state.visual_metadata = visual_metadata
+    state.current_spoken_index = 0
+    state.current_visual_index = spoken_to_visual[0] if spoken_to_visual else 0
+    state.last_partial_text = ""
+    state.partial_read_count = 0
+    state.restart_partial_block = False
+    state.discard_buffer = True
+    state.last_advance_time = 0.0
+
+    session.aligner.spoken_to_visual = spoken_to_visual
+    session.aligner.visual_lines = visual_lines
+    controller = session.scroll_controller
+    controller.last_final_text = ""
+    controller.last_partial_processed = ""
+    session.speech_recognizer.reset_vosk()
+
+    return len(visual_lines)
 
 
 # SocketIO event handlers
@@ -225,6 +304,30 @@ def register_handlers(sio):
         if not _require_auth((data or {}).get("token") if data else None):
             return
         emit("config_rolagem", calculate_scroll_config(session), to=request.sid)
+
+    @sio.on("load_script")
+    def handle_load_script(data=None):
+        session = _get_session_or_disconnect()
+        if not session:
+            return {"ok": False, "error": "Sessão indisponível."}
+        if not isinstance(data, dict):
+            return {"ok": False, "error": "Dados de arquivo inválidos."}
+        if not _require_auth(data.get("token")):
+            return {"ok": False, "error": "Autenticação inválida."}
+
+        try:
+            payload = data.get("payload")
+            line_count = _load_processed_script(session, payload)
+        except (BddfPayloadError, TypeError, ValueError) as error:
+            logger.warning(f"Script upload rejected: {error}")
+            return {"ok": False, "error": str(error)}
+
+        if not session.state.is_paused():
+            next_state = TeleprompterState.AUTOMATIC if session.state.running else TeleprompterState.WAITING
+            session.state.change_state(next_state)
+        emit_script_to_frontend(session, target=session.room_id)
+        emit_status(session)
+        return {"ok": True, "lineCount": line_count}
 
     @sio.on("manual_next")
     def handle_manual_next(data=None):

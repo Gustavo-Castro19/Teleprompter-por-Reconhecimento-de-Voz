@@ -182,14 +182,44 @@ export function initUI() {
             const arquivo = s.fileInput.files[0];
             if (!arquivo) return;
 
-            const texto = await arquivo.text();
+            try {
+                const conteudo = await arquivo.text();
+                const extensao = arquivo.name.split(".").pop().toLowerCase();
+                let payload;
 
-            if (s.editor) {
-                s.editor.innerText = texto;
-                s.linhasRoteiro = texto.split("\n").filter(l => l.trim() !== "");
-                s.segmentosRoteiro = [];
-                s.metadadosLinhas = [];
-                renderizarRoteiro(s.linhasRoteiro);
+                if (extensao === "json") {
+                    payload = JSON.parse(conteudo);
+                } else if (extensao === "txt") {
+                    payload = { slugs: [{ body: conteudo }] };
+                } else {
+                    throw new Error("Formato não suportado. Abra um arquivo .json ou .txt.");
+                }
+
+                if (!s.socket?.connected) {
+                    throw new Error("A conexão com o servidor ainda não está pronta.");
+                }
+
+                const resultado = await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(
+                        () => reject(new Error("O servidor demorou para processar o roteiro.")),
+                        15000
+                    );
+
+                    s.socket.emit("load_script", withAuth({ payload }), resposta => {
+                        clearTimeout(timeout);
+                        if (resposta?.ok) {
+                            resolve(resposta);
+                        } else {
+                            reject(new Error(resposta?.error || "Não foi possível interpretar o arquivo."));
+                        }
+                    });
+                });
+
+                console.info(`Roteiro carregado: ${resultado.lineCount} linhas.`);
+            } catch (error) {
+                window.alert(`Não foi possível abrir o roteiro: ${error.message}`);
+            } finally {
+                s.fileInput.value = "";
             }
         });
     }
