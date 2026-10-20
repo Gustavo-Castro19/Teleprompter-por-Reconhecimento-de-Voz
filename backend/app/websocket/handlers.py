@@ -392,9 +392,12 @@ def register_handlers(sio):
             emit_status(session)
             return
 
-        if session.state.is_paused():
+        if session.state.is_paused() or session.state.state == TeleprompterState.WAITING:
+            was_waiting = session.state.state == TeleprompterState.WAITING
+            session.state.running = True
             session.state.change_state(TeleprompterState.AUTOMATIC)
-            emit_scroll_state(session, "AUTOMATICO", "Retomada manual")
+            reason = "Motor iniciado" if was_waiting else "Retomada manual"
+            emit_scroll_state(session, "AUTOMATICO", reason)
         else:
             session.state.change_state(TeleprompterState.PAUSED)
             emit_scroll_state(session, "PAUSADO", "Pausa manual")

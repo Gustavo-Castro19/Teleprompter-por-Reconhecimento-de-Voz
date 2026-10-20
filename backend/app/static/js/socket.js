@@ -49,9 +49,8 @@ export function initSocket() {
     s.socket.on("connect", () => {
         console.log("Frontend conectado ao backend SocketIO.");
         console.log("ID da conexão:", s.socket.id);
-        if (window.IS_OPERATOR) s.socket.emit("iniciar_motor", withAuth({}));
         s.socket.emit("solicitar_config_rolagem", withAuth({}));
-        console.log("Eventos iniciar_motor e solicitar_config_rolagem enviados.");
+        console.log("Evento solicitar_config_rolagem enviado.");
     });
 
     s.socket.on("roteiro", (dados) => {

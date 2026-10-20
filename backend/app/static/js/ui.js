@@ -15,6 +15,69 @@ import { iniciarReconhecimentoVoz, pararReconhecimentoVoz, reconhecimentoAtivo }
 const undoStack = [];
 const redoStack = [];
 const MAX_HISTORY = 50;
+let activeManualPress = null;
+
+function performManualArrow(direction) {
+    if (direction === "next") {
+        enviarAvancoManual();
+    } else {
+        enviarRetornoManual();
+    }
+}
+
+function stopManualArrowRepeat(source = null) {
+    if (!activeManualPress || (source && activeManualPress.source !== source)) return;
+    clearTimeout(activeManualPress.timeout);
+    activeManualPress.button?.classList.remove("pressing");
+    activeManualPress = null;
+}
+
+function startManualArrowRepeat(direction, source, button = null) {
+    stopManualArrowRepeat();
+
+    const press = {
+        direction,
+        source,
+        button,
+        startedAt: performance.now(),
+        timeout: null,
+    };
+    activeManualPress = press;
+    button?.classList.add("pressing");
+    performManualArrow(direction);
+
+    const repeat = () => {
+        if (activeManualPress !== press) return;
+        performManualArrow(direction);
+
+        const heldFor = performance.now() - press.startedAt;
+        const interval = Math.max(110, 300 - heldFor * 0.15);
+        press.timeout = setTimeout(repeat, interval);
+    };
+
+    press.timeout = setTimeout(repeat, 380);
+}
+
+function bindManualArrowButton(button, direction) {
+    if (!button) return;
+
+    button.addEventListener("pointerdown", event => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        button.setPointerCapture?.(event.pointerId);
+        startManualArrowRepeat(direction, `pointer:${event.pointerId}`, button);
+    });
+
+    const release = event => stopManualArrowRepeat(`pointer:${event.pointerId}`);
+    button.addEventListener("pointerup", release);
+    button.addEventListener("pointercancel", release);
+    button.addEventListener("lostpointercapture", release);
+
+    // detail === 0 preserves keyboard and assistive-technology activation.
+    button.addEventListener("click", event => {
+        if (event.detail === 0) performManualArrow(direction);
+    });
+}
 
 function saveUndoState() {
     const container = s.editor || s.display;
@@ -244,23 +307,34 @@ export function initUI() {
     }
 
     // Manual navigation
-    if (s.btnNext) s.btnNext.addEventListener("click", enviarAvancoManual);
-    if (s.btnPrev) s.btnPrev.addEventListener("click", enviarRetornoManual);
+    bindManualArrowButton(s.btnNext, "next");
+    bindManualArrowButton(s.btnPrev, "prev");
     if (s.btnPlayLocal) s.btnPlayLocal.addEventListener("click", alternarPausaMotor);
 
     document.addEventListener("keydown", (evento) => {
         if (evento.key === "ArrowDown") {
             evento.preventDefault();
-            enviarAvancoManual();
+            if (!evento.repeat) startManualArrowRepeat("next", "keyboard:ArrowDown");
         }
         if (evento.key === "ArrowUp") {
             evento.preventDefault();
-            enviarRetornoManual();
+            if (!evento.repeat) startManualArrowRepeat("prev", "keyboard:ArrowUp");
         }
         if (evento.code === "Space") {
             evento.preventDefault();
             alternarPausaMotor();
         }
+    });
+
+    document.addEventListener("keyup", evento => {
+        if (evento.key === "ArrowDown" || evento.key === "ArrowUp") {
+            stopManualArrowRepeat(`keyboard:${evento.key}`);
+        }
+    });
+
+    window.addEventListener("blur", () => stopManualArrowRepeat());
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) stopManualArrowRepeat();
     });
 
     // Scroll toggle
