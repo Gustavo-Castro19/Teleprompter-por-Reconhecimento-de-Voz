@@ -40,9 +40,9 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')" || exit 1
+    CMD python -c "import os, urllib.request; urllib.request.urlopen(f\"http://localhost:{os.getenv('PORT', '8000')}/healthz\")" || exit 1
 
 # Run with gunicorn + eventlet for WebSocket support
 # Single worker (-w 1) required: Vosk model (~1.5GB) loaded in-process.
 # Multiple workers would multiply memory usage (OOM risk).
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "--bind", "0.0.0.0:8000", "--timeout", "120", "app:create_app()"]
+CMD ["sh", "-c", "exec gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:${PORT:-8000} --timeout 120 'app:create_app()'"]

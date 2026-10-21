@@ -8,6 +8,17 @@ A solução utiliza reconhecimento de voz em tempo real para identificar o trech
 
 Nesta versão, o sistema utiliza o **Vosk**, uma tecnologia de reconhecimento de fala offline, em conjunto com Python e captura de áudio local pelo microfone. O MVP também conta com uma interface web integrada em página única, utilizada para visualizar o roteiro, controlar a rolagem e apoiar a operação do teleprompter.
 
+## Hospedar uma demonstração no Render
+
+O repositório inclui um Blueprint em `render.yaml` para criar um serviço Docker no Render. Para publicar:
+
+1. Envie estas alterações para o GitHub.
+2. No Render, escolha **New → Blueprint** e conecte este repositório.
+3. Confirme a criação do serviço `teleprompter-demo`.
+4. Quando o deploy terminar, abra a URL HTTPS exibida pelo Render e clique em **ATIVAR MICROFONE**.
+
+O Render configura a porta, o segredo Flask e a origem CORS automaticamente. O plano gratuito pode suspender o serviço após 15 minutos sem tráfego; a primeira abertura após suspensão pode levar cerca de um minuto. Essa configuração usa a Web Speech API do navegador para o reconhecimento de fala. O modelo Vosk não é incluído na imagem e não cabe na memória do plano gratuito.
+
 ---
 
 ## 1. Status atual do MVP

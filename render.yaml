@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: teleprompter-demo
+    runtime: docker
+    plan: free
+    region: ohio
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ALLOWED_ORIGINS
+        fromService:
+          name: teleprompter-demo
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: VOSK_MODEL_PATH
+        value: /app/models/vosk-model-pt
+      - key: SCRIPT_PATH
+        value: roteiros/roteiro_demo_bddf.json
