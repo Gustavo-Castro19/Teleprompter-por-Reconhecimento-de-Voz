@@ -421,6 +421,15 @@ def register_handlers(sio):
             return
         mode = (data or {}).get("mode", "web")
         ready = mode != "vosk" or session.speech_recognizer.is_vosk_ready()
+
+        # Audio results are ignored while the state machine is WAITING. Starting
+        # the microphone is the user's explicit request to begin voice tracking.
+        if ready and session.state.state == TeleprompterState.WAITING:
+            session.state.running = True
+            session.state.change_state(TeleprompterState.AUTOMATIC)
+            emit_status(session)
+            emit_scroll_state(session, "AUTOMATICO", "Acompanhamento por voz iniciado")
+
         emit("speech_ready", {"mode": mode, "ready": ready}, to=request.sid)
 
     @sio.on("speech_stop")
