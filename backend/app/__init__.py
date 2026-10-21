@@ -27,7 +27,10 @@ socketio = SocketIO(
 
 def create_app() -> Flask:
     setup_logging(
-        level=settings.flask_env.upper() if settings.flask_env != "development" else "DEBUG",
+        # FLASK_ENV describes the deployment mode, not a Python logging level.
+        # Passing "PRODUCTION" to logging.setLevel raises ValueError and prevents
+        # Gunicorn workers from booting on production hosts.
+        level="DEBUG" if settings.flask_env == "development" else "INFO",
         json_format=settings.flask_env == "production"
     )
 
