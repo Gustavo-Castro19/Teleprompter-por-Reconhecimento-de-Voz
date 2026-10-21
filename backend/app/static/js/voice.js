@@ -30,6 +30,9 @@ let audioSource = null;
 let audioProcessor = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
+let reconnectTimer = null;
+let webRecognitionStarting = false;
+let webRecognitionRunning = false;
 
 export function initSpeechRecognition() {
     if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
@@ -42,6 +45,7 @@ export function initSpeechRecognition() {
         speechRecognitionSupported = true;
 
         speechRecognition.onresult = (event) => {
+            reconnectAttempts = 0;
             let interimTranscript = "";
             let finalTranscript = "";
 
@@ -76,25 +80,27 @@ export function initSpeechRecognition() {
 
             if (event.error === "not-allowed" || event.error === "service-not-allowed") {
                 console.warn("Web Speech permission denied - switching to Vosk fallback");
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
                 switchToVoskMode();
                 return;
             }
 
             if (event.error === "network" || event.error === "server-error") {
-                console.warn("Web Speech network error - trying restart");
-                setTimeout(() => {
-                    if (isSpeaking) reconnectSpeech();
-                }, 1000);
+                console.warn("Web Speech network error - waiting for recognition to end before retrying");
             }
+        };
+
+        speechRecognition.onstart = () => {
+            webRecognitionStarting = false;
+            webRecognitionRunning = true;
         };
 
         speechRecognition.onend = () => {
             console.log("Web Speech recognition ended");
-            if (isSpeaking && speechMode === SPEECH_MODE.WEB) {
-                setTimeout(() => {
-                    if (isSpeaking) reconnectSpeech();
-                }, 50);
-            }
+            webRecognitionStarting = false;
+            webRecognitionRunning = false;
+            reconnectSpeech();
         };
     } else {
         speechRecognitionSupported = false;
@@ -110,13 +116,16 @@ function startWebSpeech() {
 
     try {
         s.socket.emit("speech_start", withAuth({ mode: "web", language: "pt-BR" }));
-        speechRecognition.start();
         isSpeaking = true;
+        webRecognitionStarting = true;
+        speechRecognition.start();
         atualizarBotaoMicrofone();
         console.log("Web Speech recognition started");
         reconnectAttempts = 0;
         return true;
     } catch (e) {
+        isSpeaking = false;
+        webRecognitionStarting = false;
         console.error("Failed to start Web Speech:", e);
         return false;
     }
@@ -124,6 +133,8 @@ function startWebSpeech() {
 
 function stopWebSpeech() {
     isSpeaking = false;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
     try {
         if (speechRecognition) {
             speechRecognition.stop();
@@ -136,22 +147,40 @@ function stopWebSpeech() {
 }
 
 function reconnectSpeech() {
-    if (speechMode === SPEECH_MODE.WEB && speechRecognition) {
-        try {
-            speechRecognition.stop();
-        } catch (e) {
-            // ignore
-        }
-        setTimeout(() => {
-            if (isSpeaking) {
-                try {
-                    speechRecognition.start();
-                } catch (e) {
-                    console.error("Reconnect failed:", e);
-                }
-            }
-        }, 100);
+    if (
+        !isSpeaking ||
+        speechMode !== SPEECH_MODE.WEB ||
+        !speechRecognition ||
+        reconnectTimer !== null
+    ) return;
+
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        isSpeaking = false;
+        atualizarBotaoMicrofone();
+        showVoskToast("Reconhecimento de voz perdeu a conexão. Ative o microfone para tentar novamente.", "error");
+        return;
     }
+
+    const delay = Math.min(250 * (2 ** reconnectAttempts), 4000);
+    reconnectAttempts += 1;
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (!isSpeaking || speechMode !== SPEECH_MODE.WEB) return;
+        if (webRecognitionRunning || webRecognitionStarting) return;
+
+        try {
+            webRecognitionStarting = true;
+            speechRecognition.start();
+        } catch (e) {
+            webRecognitionStarting = false;
+            // An already active recognition session will fire onend; that event
+            // is the only place that schedules the next retry.
+            if (e.name !== "InvalidStateError") {
+                console.error("Reconnect failed:", e);
+                reconnectSpeech();
+            }
+        }
+    }, delay);
 }
 
 async function switchToVoskMode() {
