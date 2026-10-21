@@ -125,13 +125,16 @@ class ScrollController:
         best_idx: Optional[int],
         score: float,
         coverage: float,
-        relevance: float
+        relevance: float,
+        progress: Optional[float] = None,
     ):
         visual_idx = None
         if best_idx is not None:
             visual_idx = self.aligner.get_visual_index(best_idx)
 
-        progress = max(0.0, min(coverage or 0.0, 1.0))
+        if progress is None and best_idx is not None:
+            progress = self.ordered_progress(recognized_text, self.state.spoken_lines[best_idx])
+        progress = max(0.0, min(progress or 0.0, 1.0))
 
         self.socketio.emit(
             "voz_roteiro",
@@ -148,6 +151,26 @@ class ScrollController:
             },
             to=self.room_id,
         )
+
+    def ordered_progress(self, recognized_text: str, script_line: str) -> float:
+        """Estimate how far into a line the recognized words have reached."""
+        spoken = self.comparator.normalizer.normalize(recognized_text).split()
+        script = self.comparator.normalizer.normalize(script_line).split()
+        if not spoken or not script:
+            return 0.0
+
+        # Transcript updates can revise earlier words, so align the newest
+        # recognized window in order and tolerate occasional recognition errors.
+        spoken = spoken[-min(len(spoken), 12):]
+        matched = 0
+        script_index = 0
+        for word in spoken:
+            for index in range(script_index, len(script)):
+                if word == script[index] or self.comparator.similarity(word, script[index]) >= 0.8:
+                    matched += 1
+                    script_index = index + 1
+                    break
+        return script_index / len(script) if matched else 0.0
 
     def enter_improv(self, text: str):
         if not settings.habilitar_improviso if hasattr(settings, 'habilitar_improviso') else True:
@@ -269,7 +292,8 @@ class ScrollController:
         if best_idx is not None and best_score >= (settings.score_minimo_andamento_voz if hasattr(settings, 'score_minimo_andamento_voz') else 0.35):
             self.emit_voice_progress(
                 "acompanhando", "FINAL", text, best_idx,
-                best_score, best_cov, best_rel
+                best_score, best_cov, best_rel,
+                self.ordered_progress(text, self.state.spoken_lines[best_idx])
             )
 
         if best_idx is None:
@@ -359,7 +383,11 @@ class ScrollController:
         threshold = settings.score_minimo_andamento_voz if hasattr(settings, 'score_minimo_andamento_voz') else 0.35
         if score >= threshold:
             voice_state = "retomou" if self.state.is_improv() or self.state.is_vt_or_link() else "acompanhando"
-            self.emit_voice_progress(voice_state, "PARCIAL", text, self.state.current_spoken_index, score, cov, rel)
+            self.emit_voice_progress(
+                voice_state, "PARCIAL", text, self.state.current_spoken_index,
+                score, cov, rel,
+                self.ordered_progress(text, current_line)
+            )
             if voice_state == "retomou":
                 self.exit_improv()
         else:

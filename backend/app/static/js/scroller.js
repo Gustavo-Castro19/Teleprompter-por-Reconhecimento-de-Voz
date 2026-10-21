@@ -103,23 +103,23 @@ export function calcularFatorDeVoz(dados) {
     const diferenca = progresso - progressoEsperado;
 
     if (score < 0.40) {
-        return 0.45;
+        return 0.75;
     }
 
     if (diferenca >= 0.25) {
-        return 1.45;
+        return 1.35;
     }
 
     if (diferenca >= 0.12) {
-        return 1.25;
+        return 1.18;
     }
 
     if (diferenca <= -0.25) {
-        return 0.45;
+        return 0.65;
     }
 
     if (diferenca <= -0.12) {
-        return 0.70;
+        return 0.82;
     }
 
     return 1.0;
