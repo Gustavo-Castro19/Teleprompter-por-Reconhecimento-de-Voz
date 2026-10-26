@@ -35,6 +35,7 @@ let webRecognitionStarting = false;
 let webRecognitionRunning = false;
 
 export function initSpeechRecognition() {
+    setSpeechStatus("Microfone desligado");
     if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         speechRecognition = new SpeechRecognition();
@@ -94,6 +95,7 @@ export function initSpeechRecognition() {
         speechRecognition.onstart = () => {
             webRecognitionStarting = false;
             webRecognitionRunning = true;
+            setSpeechStatus("Ouvindo · navegador");
         };
 
         speechRecognition.onend = () => {
@@ -115,6 +117,7 @@ function startWebSpeech() {
     }
 
     try {
+        setSpeechStatus("Iniciando · navegador");
         s.socket.emit("speech_start", withAuth({ mode: "web", language: "pt-BR" }));
         isSpeaking = true;
         webRecognitionStarting = true;
@@ -127,6 +130,7 @@ function startWebSpeech() {
         isSpeaking = false;
         webRecognitionStarting = false;
         console.error("Failed to start Web Speech:", e);
+        setSpeechStatus("Falha ao iniciar reconhecimento", "error");
         return false;
     }
 }
@@ -144,6 +148,7 @@ function stopWebSpeech() {
     }
     s.socket.emit("speech_stop", withAuth({}));
     atualizarBotaoMicrofone();
+    setSpeechStatus("Microfone desligado");
 }
 
 function reconnectSpeech() {
@@ -157,12 +162,14 @@ function reconnectSpeech() {
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
         isSpeaking = false;
         atualizarBotaoMicrofone();
+        setSpeechStatus("Reconhecimento desconectado · ative o microfone para tentar novamente", "error");
         showVoskToast("Reconhecimento de voz perdeu a conexão. Ative o microfone para tentar novamente.", "error");
         return;
     }
 
     const delay = Math.min(250 * (2 ** reconnectAttempts), 4000);
     reconnectAttempts += 1;
+    setSpeechStatus("Reconectando · navegador", "warning");
     reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         if (!isSpeaking || speechMode !== SPEECH_MODE.WEB) return;
@@ -188,6 +195,7 @@ async function switchToVoskMode() {
 
     console.log("Switching to Vosk mode...");
     speechMode = SPEECH_MODE.VOSK;
+    setSpeechStatus("Ativando reconhecimento offline · Vosk");
 
     stopWebSpeech();
 
@@ -234,11 +242,13 @@ async function switchToVoskMode() {
         s.socket.emit("speech_start", withAuth({ mode: "vosk", language: "pt-BR" }));
         isSpeaking = true;
         atualizarBotaoMicrofone();
+        setSpeechStatus("Conectando · Vosk");
 
         showVoskToast("Modo offline Vosk ativado");
     } catch (err) {
         console.error("Failed to start Vosk mode:", err);
         stopVoskMode();
+        setSpeechStatus("Falha ao acessar microfone", "error");
         showVoskToast("Erro ao acessar microfone para Vosk", "error");
     }
 }
@@ -263,6 +273,7 @@ function stopVoskMode() {
     audioSource = null;
     s.socket.emit("speech_stop", withAuth({}));
     atualizarBotaoMicrofone();
+    setSpeechStatus("Microfone desligado");
 }
 
 export async function iniciarReconhecimentoVoz() {
@@ -302,6 +313,14 @@ function atualizarBotaoMicrofone() {
     button.textContent = isSpeaking ? "MICROFONE ATIVO" : "ATIVAR MICROFONE";
     button.classList.toggle("active", isSpeaking);
     button.setAttribute("aria-pressed", String(isSpeaking));
+}
+
+function setSpeechStatus(message, type = "") {
+    const status = document.getElementById("speechStatus");
+    if (!status) return;
+    status.textContent = message;
+    status.title = message;
+    status.className = `speech-status ${type}`.trim();
 }
 
 // Toast helper
@@ -363,10 +382,17 @@ function showVoskToast(message, type = "info") {
 
 // Socket event handlers for speech
 export function handleSpeechReady(dados) {
-    if (dados.mode === "vosk" && !dados.ready) {
-        console.warn("Vosk not ready, staying on Web Speech");
+    if (dados.mode === "vosk" && dados.ready) {
+        setSpeechStatus("Ouvindo · Vosk offline");
+    } else if (dados.mode === "vosk") {
+        console.warn("Vosk not ready, falling back to Web Speech");
+        stopVoskMode();
         speechMode = SPEECH_MODE.WEB;
-        startWebSpeech();
+        if (startWebSpeech()) {
+            showVoskToast("Vosk indisponível; usando reconhecimento do navegador");
+        } else {
+            setSpeechStatus("Vosk indisponível e navegador sem reconhecimento", "error");
+        }
     }
 }
 
@@ -374,9 +400,10 @@ export function handleSpeechError(dados) {
     console.error("Speech error from backend:", dados.error);
     if (dados.fallback && speechMode === SPEECH_MODE.VOSK) {
         console.log("Falling back to Web Speech");
+        setSpeechStatus("Vosk falhou · alternando para navegador", "warning");
         speechMode = SPEECH_MODE.WEB;
         stopVoskMode();
-        startWebSpeech();
+        if (!startWebSpeech()) setSpeechStatus("Falha no reconhecimento de voz", "error");
     }
 }
 
@@ -407,6 +434,18 @@ export function handleVozRoteiro(dados) {
     if (!dados) return;
 
     s.estadoVozAtual = dados.estadoVoz || "aguardando";
+
+    if (s.estadoVozAtual === "incerto") {
+        const confidence = Number(dados.confiancaReconhecimento || 0);
+        setSpeechStatus(`Fala incerta (${Math.round(confidence * 100)}%) · aguardando confirmação`, "warning");
+        return;
+    }
+
+    if (s.estadoVozAtual === "improviso") {
+        setSpeechStatus("Não consegui acompanhar o roteiro · use PREV/NEXT se necessário", "warning");
+    } else if (s.estadoVozAtual === "acompanhando" || s.estadoVozAtual === "retomou") {
+        setSpeechStatus(`Acompanhando roteiro · ${speechMode === SPEECH_MODE.WEB ? "navegador" : "Vosk offline"}`);
+    }
 
     if (
         s.estadoVozAtual === "acompanhando" ||

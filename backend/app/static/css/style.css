@@ -178,6 +178,23 @@ body {
     border-color: #c64a4a;
 }
 
+.speech-status {
+    color: #b8c2cc;
+    font-size: 11px;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.speech-status.error {
+    color: #ff8b8b;
+}
+
+.speech-status.warning {
+    color: #ffd166;
+}
+
 .logo-circle img {
     width: 40px;
     height: 40px;
