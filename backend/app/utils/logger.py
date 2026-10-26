@@ -2,8 +2,8 @@ import logging
 import sys
 import json
 from datetime import datetime
-from typing import Any
 from functools import lru_cache
+from app.utils.logger import get_logger
 
 
 class JSONFormatter(logging.Formatter):
@@ -49,7 +49,6 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
-from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,10 +1,9 @@
 from flask import request
 from flask_socketio import emit, disconnect, join_room
+from pydantic import BaseModel
 
 from app.services import (
     TeleprompterState,
-    ScrollController,
-    HybridSpeechRecognizer,
     RecognitionType,
 )
 from app.models import ScriptSegment, VisualLineMeta
@@ -39,7 +38,7 @@ def is_vosk_ready() -> bool:
     return session_manager._shared_speech_recognizer.is_vosk_ready()
 
 
-def _get_session_or_disconnect() -> "SessionData | None":
+def _get_session_or_disconnect() -> SessionData | None:
     """Get session for current request.sid, disconnect if invalid."""
     sid = request.sid
     session = session_manager.get_session(sid)
@@ -159,7 +158,6 @@ def emit_scroll_state(session, state_type: str, reason: str = "", pause_seconds:
 
 
 # Pydantic models for input validation
-from pydantic import BaseModel
 
 
 class SpeechResultData(BaseModel):
@@ -489,7 +487,7 @@ def _process_recognition_result(session, result):
     if result.type == RecognitionType.PARTIAL:
         session.scroll_controller.evaluate_partial(result.text, allow_advance=True)
     elif result.type == RecognitionType.FINAL:
-        decision = session.scroll_controller.evaluate_final(result.text)
+        decision = session.scroll_controller.evaluate_final(result.text, result.confidence)
         if decision.should_advance and decision.target_index is not None:
             segment = decision.segment
             session.scroll_controller.send_command(

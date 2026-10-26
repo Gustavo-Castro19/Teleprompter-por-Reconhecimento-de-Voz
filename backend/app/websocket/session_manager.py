@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
-from app.services import StateMachine, TeleprompterState, ScrollController, ScriptAligner, HybridSpeechRecognizer
+from app.services import StateMachine, ScrollController, ScriptAligner, HybridSpeechRecognizer
 from app.services.script_processor import ScriptProcessor
 from app.utils.logger import get_logger
 

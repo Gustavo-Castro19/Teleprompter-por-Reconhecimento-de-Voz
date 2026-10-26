@@ -2,7 +2,7 @@ import pytest
 import tempfile
 import json
 from pathlib import Path
-from app.utils.text_normalizer import TextComparator, _load_stop_words
+from app.utils.text_normalizer import TextComparator
 from app.config import CONFIG
 
 

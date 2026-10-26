@@ -4,7 +4,6 @@ Download Vosk Portuguese model for teleprompter.
 Run this script before building the Docker image.
 """
 
-import os
 import sys
 import urllib.request
 import zipfile

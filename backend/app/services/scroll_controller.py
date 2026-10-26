@@ -127,6 +127,7 @@ class ScrollController:
         coverage: float,
         relevance: float,
         progress: Optional[float] = None,
+        recognition_confidence: float = 0.0,
     ):
         visual_idx = None
         if best_idx is not None:
@@ -148,6 +149,7 @@ class ScrollController:
                 "cobertura": round(coverage or 0.0, 2),
                 "relevancia": round(relevance or 0.0, 2),
                 "progressoEstimado": round(progress, 2),
+                "confiancaReconhecimento": round(recognition_confidence or 0.0, 2),
             },
             to=self.room_id,
         )
@@ -257,7 +259,7 @@ class ScrollController:
         EventLogger.scroll_event(event_type, target_spoken_idx, visual_idx)
         return True
 
-    def evaluate_final(self, text: str) -> ScrollDecision:
+    def evaluate_final(self, text: str, confidence: float = 0.0) -> ScrollDecision:
         if not self.state.can_evaluate_audio():
             return ScrollDecision(False)
 
@@ -281,6 +283,15 @@ class ScrollController:
             return ScrollDecision(False)
 
         self.last_final_text = normalized
+
+        # Browser confidence is sometimes unavailable (reported as 0); only
+        # reject a result when the browser supplied a low, non-zero score.
+        if 0 < confidence < 0.25:
+            self.emit_voice_progress(
+                "incerto", "FINAL", text, None, 0.0, 0.0, 0.0,
+                recognition_confidence=confidence,
+            )
+            return ScrollDecision(False)
 
         best_idx, best_score, best_sim, best_cov, best_rel = self.find_best_match(text)
 

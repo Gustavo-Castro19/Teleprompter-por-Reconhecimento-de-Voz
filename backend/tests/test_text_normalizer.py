@@ -1,4 +1,3 @@
-import pytest
 from app.utils.text_normalizer import TextNormalizer, TextComparator
 
 
