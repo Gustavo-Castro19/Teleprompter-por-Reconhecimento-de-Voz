@@ -1,5 +1,7 @@
 import secrets
-from flask import render_template, current_app, send_from_directory, session
+
+from flask import current_app, render_template, send_from_directory, session
+
 from app.routes import teleprompter_bp
 
 

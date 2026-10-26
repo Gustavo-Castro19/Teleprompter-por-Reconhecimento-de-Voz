@@ -1,7 +1,8 @@
 import pytest
-from app.services.state_machine import StateMachine, TeleprompterState
+
 from app.services.aligner import ScriptAligner
 from app.services.script_processor import ScriptProcessor
+from app.services.state_machine import StateMachine, TeleprompterState
 
 
 class TestStateMachine:

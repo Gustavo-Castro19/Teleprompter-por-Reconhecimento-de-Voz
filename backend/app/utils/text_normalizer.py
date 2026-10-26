@@ -1,10 +1,18 @@
-import re
 import json
+import re
 import unicodedata
+
 from rapidfuzz import fuzz
-from app.config import get_settings, CONFIG
+
+from app.config import CONFIG, get_settings
 
 settings = get_settings()
+_DEFAULT_STOP_WORDS = {
+    "a", "o", "e", "de", "do", "da", "dos", "das",
+    "em", "no", "na", "nos", "nas", "um", "uma",
+    "para", "pra", "com", "por", "que", "se",
+    "ao", "as", "os", "ou", "é",
+}
 
 
 def _load_stop_words() -> set[str]:
@@ -17,15 +25,9 @@ def _load_stop_words() -> set[str]:
             # Default to pt-BR if available, else first language
             lang = data.get("pt-BR") or next(iter(data.values()), [])
             return set(lang)
-        except Exception:
-            pass
-    # Built-in PT-BR fallback
-    return {
-        "a", "o", "e", "de", "do", "da", "dos", "das",
-        "em", "no", "na", "nos", "nas", "um", "uma",
-        "para", "pra", "com", "por", "que", "se",
-        "ao", "as", "os", "ou", "e", "é",
-    }
+        except (OSError, json.JSONDecodeError, AttributeError, TypeError):
+            return _DEFAULT_STOP_WORDS.copy()
+    return _DEFAULT_STOP_WORDS.copy()
 
 
 class TextNormalizer:

@@ -1,7 +1,9 @@
 import json
-from flask import request, jsonify
+
+from flask import jsonify, request
+
 from app.routes import scripts_bp
-from app.services.bddf_processor import process_bddf_request, BddfPayloadError
+from app.services.bddf_processor import BddfPayloadError, process_bddf_request
 
 
 @scripts_bp.route("/scripts", methods=["POST"])

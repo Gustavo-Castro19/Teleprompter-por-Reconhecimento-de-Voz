@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -9,18 +8,18 @@ class ScriptSegment:
     line_type: str = "fala"
     spoken_index: int = 0
     visual_index: int = 0
-    estimated_time: Optional[float] = None
+    estimated_time: float | None = None
     time_source: str = "estimativa_por_palavras"
-    presenter: Optional[str] = None
-    title: Optional[str] = None
-    page: Optional[str] = None
-    item_type: Optional[str] = None
-    slug_order: Optional[int] = None
-    slug_id: Optional[str] = None
+    presenter: str | None = None
+    title: str | None = None
+    page: str | None = None
+    item_type: str | None = None
+    slug_order: int | None = None
+    slug_id: str | None = None
     speaking_time: float = 0.0
     tape_time: float = 0.0
     total_time: float = 0.0
-    start_time: Optional[str] = None
+    start_time: str | None = None
     pause_after_seconds: float = 0.0
     pause_reason: str = ""
 
@@ -54,11 +53,11 @@ class VisualLineMeta:
     visual_index: int
     visual_text: str
     line_type: str = "fala"
-    title: Optional[str] = None
-    page: Optional[str] = None
-    item_type: Optional[str] = None
-    slug_order: Optional[int] = None
-    slug_id: Optional[str] = None
+    title: str | None = None
+    page: str | None = None
+    item_type: str | None = None
+    slug_order: int | None = None
+    slug_id: str | None = None
     speaking_time: float = 0.0
     tape_time: float = 0.0
     total_time: float = 0.0

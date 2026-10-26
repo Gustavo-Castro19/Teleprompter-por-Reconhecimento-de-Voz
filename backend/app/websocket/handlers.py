@@ -1,15 +1,15 @@
 from flask import request
-from flask_socketio import emit, disconnect, join_room
-from pydantic import BaseModel
+from flask_socketio import disconnect, emit, join_room
+from pydantic import BaseModel, ValidationError
 
-from app.services import (
-    TeleprompterState,
-    RecognitionType,
-)
 from app.models import ScriptSegment, VisualLineMeta
+from app.services import (
+    RecognitionType,
+    TeleprompterState,
+)
 from app.services.bddf_processor import BddfPayloadError, process_bddf_request
 from app.utils.logger import EventLogger, get_logger
-from app.websocket.session_manager import session_manager
+from app.websocket.session_manager import SessionData, session_manager
 
 logger = get_logger(__name__)
 
@@ -451,7 +451,7 @@ def register_handlers(sio):
 
         try:
             payload = SpeechResultData.model_validate(data or {})
-        except Exception as e:
+        except ValidationError as e:
             logger.warning(f"Invalid speech_result payload: {e}")
             return
 
@@ -471,7 +471,7 @@ def register_handlers(sio):
 
         try:
             payload = SpeechAudioData.model_validate(data or {})
-        except Exception as e:
+        except ValidationError as e:
             logger.warning(f"Invalid speech_audio payload: {e}")
             return
 

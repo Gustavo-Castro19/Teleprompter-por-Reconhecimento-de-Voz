@@ -1,4 +1,4 @@
-from app.utils.text_normalizer import TextNormalizer, TextComparator
+from app.utils.text_normalizer import TextComparator, TextNormalizer
 
 
 class TestTextNormalizer:
@@ -78,7 +78,7 @@ class TestTextComparator:
         assert rel == 1.0
 
     def test_weighted_score_no_match(self):
-        score, sim, cov, rel = self.comp.weighted_score("tchau", "olá mundo")
+        score, _sim, _cov, _rel = self.comp.weighted_score("tchau", "olá mundo")
         assert score == 0.0
 
 

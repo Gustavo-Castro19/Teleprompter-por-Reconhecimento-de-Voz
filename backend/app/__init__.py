@@ -1,12 +1,13 @@
 import os
-from flask import Flask, send_from_directory, jsonify
-from werkzeug.exceptions import RequestEntityTooLarge
+
+from flask import Flask, jsonify
 from flask_socketio import SocketIO
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.config import get_settings
 from app.routes import health_bp, scripts_bp, teleprompter_bp
+from app.utils.logger import get_logger, setup_logging
 from app.websocket.handlers import register_handlers
-from app.utils.logger import setup_logging, get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()

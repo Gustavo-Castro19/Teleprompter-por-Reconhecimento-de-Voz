@@ -1,15 +1,14 @@
+import json
 import logging
 import sys
-import json
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import lru_cache
-from app.utils.logger import get_logger
 
 
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -77,7 +76,7 @@ class EventLogger:
 
     @staticmethod
     def system_failure(error: Exception):
-        logger.error(f"[FAILURE] Critical system error: {error}", exc_info=True)
+        logger.error(f"[FAILURE] Critical system error: {error}")
 
     @staticmethod
     def microphone_opened():

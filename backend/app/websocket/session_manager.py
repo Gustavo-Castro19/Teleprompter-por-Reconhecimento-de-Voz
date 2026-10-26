@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
 
-from app.services import StateMachine, ScrollController, ScriptAligner, HybridSpeechRecognizer
+from app.services import (
+    HybridSpeechRecognizer,
+    ScriptAligner,
+    ScrollController,
+    StateMachine,
+)
 from app.services.script_processor import ScriptProcessor
 from app.utils.logger import get_logger
 
@@ -30,8 +34,8 @@ class SessionManager:
     """Manages in-memory teleprompter rooms for this single worker."""
 
     def __init__(self):
-        self._sessions: Dict[str, SessionData] = {}
-        self._rooms: Dict[str, SessionData] = {}
+        self._sessions: dict[str, SessionData] = {}
+        self._rooms: dict[str, SessionData] = {}
         self._script_processor = ScriptProcessor()
         self._shared_speech_recognizer = HybridSpeechRecognizer()
         self._script_loaded = False
@@ -101,7 +105,7 @@ class SessionManager:
         logger.info(f"Created session {sid}")
         return session
 
-    def get_session(self, sid: str) -> Optional[SessionData]:
+    def get_session(self, sid: str) -> SessionData | None:
         return self._sessions.get(sid)
 
     def remove_session(self, sid: str) -> None:

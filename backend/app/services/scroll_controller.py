@@ -1,12 +1,11 @@
 import time
-from typing import Optional
 from dataclasses import dataclass
 
 from app.config import get_settings
-from app.services.state_machine import StateMachine, TeleprompterState
 from app.services.aligner import ScriptAligner
-from app.utils.text_normalizer import get_comparator
+from app.services.state_machine import StateMachine, TeleprompterState
 from app.utils.logger import EventLogger, get_logger
+from app.utils.text_normalizer import get_comparator
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -15,7 +14,7 @@ settings = get_settings()
 @dataclass
 class ScrollDecision:
     should_advance: bool
-    target_index: Optional[int] = None
+    target_index: int | None = None
     event_type: str = "next"
     segment = None
     pause_after: float = 0.0
@@ -62,7 +61,7 @@ class ScrollController:
                 uniq.append(idx)
         return uniq
 
-    def find_best_match(self, text: str) -> tuple[Optional[int], float, float, float, float]:
+    def find_best_match(self, text: str) -> tuple[int | None, float, float, float, float]:
         best_idx = None
         best_score = 0.0
         best_sim = 0.0
@@ -81,7 +80,7 @@ class ScrollController:
 
         return best_idx, best_score, best_sim, best_cov, best_rel
 
-    def min_score_for_distance(self, distance: int) -> Optional[float]:
+    def min_score_for_distance(self, distance: int) -> float | None:
         if distance == -1:
             return 0.82
         if distance == 0:
@@ -100,7 +99,7 @@ class ScrollController:
                 return seg
         return None
 
-    def segment_to_socket(self, segment) -> Optional[dict]:
+    def segment_to_socket(self, segment) -> dict | None:
         if not segment:
             return None
         return segment.to_frontend()
@@ -122,11 +121,11 @@ class ScrollController:
         voice_state: str,
         result_type: str,
         recognized_text: str,
-        best_idx: Optional[int],
+        best_idx: int | None,
         score: float,
         coverage: float,
         relevance: float,
-        progress: Optional[float] = None,
+        progress: float | None = None,
         recognition_confidence: float = 0.0,
     ):
         visual_idx = None
@@ -207,10 +206,8 @@ class ScrollController:
         text: str
     ) -> bool:
         total = len(self.state.spoken_lines)
-        if target_spoken_idx > total:
-            target_spoken_idx = total
-        if target_spoken_idx < 0:
-            target_spoken_idx = 0
+        target_spoken_idx = min(target_spoken_idx, total)
+        target_spoken_idx = max(target_spoken_idx, 0)
 
         spoken_read = target_spoken_idx - 1
         if event_type == "back":

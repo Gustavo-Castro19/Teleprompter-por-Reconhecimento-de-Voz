@@ -1,7 +1,6 @@
-from enum import Enum
-from dataclasses import dataclass, field
-from typing import Optional
 import time
+from dataclasses import dataclass, field
+from enum import Enum
 
 from app.utils.logger import get_logger
 
@@ -45,7 +44,7 @@ class StateMachine:
     restart_partial_block: bool = False
 
     last_improv_text: str = ""
-    improv_start_time: Optional[float] = None
+    improv_start_time: float | None = None
 
     def change_state(self, new_state: TeleprompterState) -> None:
         if new_state == self.state:

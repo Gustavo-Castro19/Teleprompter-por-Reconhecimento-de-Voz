@@ -1,8 +1,8 @@
 import json
 import os
 import re
-from typing import Any
 from dataclasses import dataclass
+from typing import Any
 
 from app.config import get_settings
 from app.models import ScriptSegment, VisualLineMeta
@@ -147,9 +147,7 @@ class ScriptProcessor:
             return False
         if self.is_separator(text):
             return False
-        if not re.search(r"[A-Za-zÀ-ÿ]", text):
-            return False
-        return True
+        return bool(re.search(r"[A-Za-zÀ-ÿ]", text))
 
     def extract_slug_meta(self, slug: dict) -> dict:
         return {

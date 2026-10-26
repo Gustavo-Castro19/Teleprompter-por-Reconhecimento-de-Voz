@@ -1,11 +1,10 @@
-import os
-import json
 import base64
-from typing import Optional
+import json
+import os
 from dataclasses import dataclass
 from enum import Enum
 
-from vosk import Model, KaldiRecognizer
+from vosk import KaldiRecognizer, Model
 
 from app.config import get_settings
 from app.utils.logger import get_logger
@@ -34,9 +33,9 @@ class RecognitionResult:
 
 
 class VoskRecognizer:
-    def __init__(self, model: Optional[Model] = None):
-        self.model: Optional[Model] = model
-        self.recognizer: Optional[KaldiRecognizer] = None
+    def __init__(self, model: Model | None = None):
+        self.model: Model | None = model
+        self.recognizer: KaldiRecognizer | None = None
         self.sample_rate = settings.vosk_sample_rate
 
     def initialize(self) -> bool:
@@ -53,8 +52,8 @@ class VoskRecognizer:
             self.recognizer.Reset()
             logger.info("Vosk recognizer initialized successfully")
             return True
-        except Exception as e:
-            logger.error(f"Failed to initialize Vosk: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Failed to initialize Vosk")
             return False
 
     def process_audio(self, audio_data: bytes) -> RecognitionResult:
@@ -70,8 +69,8 @@ class VoskRecognizer:
                 result = json.loads(self.recognizer.PartialResult())
                 text = result.get("partial", "")
                 return RecognitionResult(RecognitionType.PARTIAL, text, RecognitionSource.VOSK)
-        except Exception as e:
-            logger.error(f"Vosk processing error: {e}")
+        except Exception:
+            logger.exception("Vosk processing error")
             return RecognitionResult(RecognitionType.ERROR, "", RecognitionSource.VOSK)
 
     def reset(self):
@@ -89,7 +88,7 @@ class HybridSpeechRecognizer:
     This service handles Vosk processing for the fallback path.
     """
 
-    def __init__(self, shared_model: Optional[Model] = None):
+    def __init__(self, shared_model: Model | None = None):
         self.vosk = VoskRecognizer(shared_model)
         self.vosk_ready = False
 
@@ -114,8 +113,8 @@ class HybridSpeechRecognizer:
         try:
             audio_bytes = base64.b64decode(audio_base64)
             return self.vosk.process_audio(audio_bytes)
-        except Exception as e:
-            logger.error(f"Failed to decode/process audio: {e}")
+        except (ValueError, base64.binascii.Error) as e:
+            logger.error(f"Failed to decode audio: {e}")
             return RecognitionResult(RecognitionType.ERROR, "", RecognitionSource.VOSK)
 
     def reset_vosk(self):

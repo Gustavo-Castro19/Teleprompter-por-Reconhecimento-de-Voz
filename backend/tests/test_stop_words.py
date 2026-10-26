@@ -1,9 +1,11 @@
-import pytest
-import tempfile
 import json
+import tempfile
 from pathlib import Path
-from app.utils.text_normalizer import TextComparator
+
+import pytest
+
 from app.config import CONFIG
+from app.utils.text_normalizer import TextComparator
 
 
 class TestStopWords:

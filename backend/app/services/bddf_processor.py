@@ -114,7 +114,7 @@ def _extract_subblocks(value: Any) -> list[dict[str, Any]]:
         if not isinstance(raw_value, str):
             raw_value = str(raw_value)
 
-        raw_parts = re.split(r"<pi\b[^>]*>\s*=+\s*</pi>", raw_value, flags=re.I)
+        raw_parts = re.split(r"<pi\b[^>]*>\s*=+\s*</pi>", raw_value, flags=re.IGNORECASE)
         if len(raw_parts) == 1:
             raw_parts = re.split(r"(?m)^\s*=+\s*$", raw_value)
 
@@ -144,17 +144,17 @@ def _extract_lines(value: str) -> list[str]:
         r"<cc\b[^>]*>.*?</cc>",
         "\n",
         value,
-        flags=re.I | re.S,
+        flags=re.IGNORECASE | re.DOTALL,
     )
     clean = re.sub(
         r"<pi\b[^>]*>(.*?)</pi>",
         lambda match: _strip_inline_markup(match.group(1)),
         clean,
-        flags=re.I | re.S,
+        flags=re.IGNORECASE | re.DOTALL,
     )
     clean = re.sub(r"<[^>]+>", "\n", clean)
     clean = clean.replace("\r", "\n")
-    clean = re.sub(r"\{\{.*?\}\}|\{.*?\}", lambda match: match.group(0), clean, flags=re.S)
+    clean = re.sub(r"\{\{.*?\}\}|\{.*?\}", lambda match: match.group(0), clean, flags=re.DOTALL)
 
     for line in clean.splitlines():
         line = re.sub(r"\s+", " ", line).strip()
@@ -189,7 +189,7 @@ def _strip_inline_markup(value: str) -> str:
 
 
 def _is_command(value: str) -> bool:
-    return bool(re.fullmatch(r"\{\{.*?\}\}", value.strip(), flags=re.S))
+    return bool(re.fullmatch(r"\{\{.*?\}\}", value.strip(), flags=re.DOTALL))
 
 
 def _ensure_mapping(value: Any, location: str) -> Mapping[str, Any]:

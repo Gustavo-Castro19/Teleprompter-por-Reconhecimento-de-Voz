@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
 """
 Download Vosk Portuguese model for teleprompter.
 Run this script before building the Docker image.
 """
 
+import shutil
 import sys
 import urllib.request
 import zipfile
-import shutil
 from pathlib import Path
 
 MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-pt-fb-v0.1.1-20220516_2113.zip"
@@ -32,7 +31,7 @@ def download_model():
     try:
         urllib.request.urlretrieve(MODEL_URL, zip_path)
         print("Download complete.")
-    except Exception as e:
+    except OSError as e:
         print(f"Failed to download model: {e}")
         sys.exit(1)
 
@@ -40,7 +39,7 @@ def download_model():
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(models_dir)
-    except Exception as e:
+    except (OSError, zipfile.BadZipFile, RuntimeError) as e:
         print(f"Failed to extract model: {e}")
         sys.exit(1)
 
