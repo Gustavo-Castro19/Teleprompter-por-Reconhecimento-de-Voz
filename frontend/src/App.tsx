@@ -1,14 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Header from "./components/layout/Header";
 import { ProgramList } from "./components/ProgramList";
 import { Teleprompter } from "./components/Teleprompter";
 import { useScriptFollow } from "./hooks/useScriptFollow";
 import { useSpeechCapture } from "./hooks/useSpeechCapture";
 import { useSlugs } from "./hooks/useSlugs";
-import {
-  listScriptBlocks,
-  type ScriptBlockItem,
-} from "./lib/scriptModel";
+import type { RetrancaMarker } from "./lib/scriptModel";
 import {
   loadTeleprompterLayout,
   saveTeleprompterLayout,
@@ -17,9 +14,12 @@ import {
 
 function App() {
   const programs = useSlugs();
-  const blocks = useMemo(() => listScriptBlocks(programs), [programs]);
+  const activeProgram = programs[0] ?? null;
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeRetrancaId, setActiveRetrancaId] = useState<string | null>(
+    null,
+  );
+  const [anchorWordIndex, setAnchorWordIndex] = useState(0);
   const [operatorMode, setOperatorMode] = useState(false);
   const [layout, setLayout] = useState<TeleprompterLayout>(() =>
     loadTeleprompterLayout(),
@@ -34,18 +34,27 @@ function App() {
     isSupported,
   } = useSpeechCapture();
 
-  const selected = useMemo(
-    () => blocks.find((item) => item.id === selectedId) ?? null,
-    [blocks, selectedId],
-  );
-
-  const { lines, cursor, improvising } = useScriptFollow(
-    selected?.block ?? null,
+  const { lines, cursor, improvising, markers } = useScriptFollow(
+    activeProgram,
     transcript,
+    anchorWordIndex,
   );
 
-  function handleSelect(item: ScriptBlockItem) {
-    setSelectedId(item.id);
+  useEffect(() => {
+    setActiveRetrancaId(null);
+    setAnchorWordIndex(0);
+    clearTranscript();
+  }, [activeProgram, clearTranscript]);
+
+  function handleSelectStart() {
+    setActiveRetrancaId(null);
+    setAnchorWordIndex(0);
+    clearTranscript();
+  }
+
+  function handleSelect(marker: RetrancaMarker) {
+    setActiveRetrancaId(marker.id);
+    setAnchorWordIndex(marker.startWordIndex);
     clearTranscript();
   }
 
@@ -71,9 +80,10 @@ function App() {
 
       <div className="flex min-h-0 flex-1">
         <ProgramList
-          blocks={blocks}
-          selectedId={selectedId}
+          markers={markers}
+          selectedId={activeRetrancaId}
           onSelect={handleSelect}
+          onSelectStart={handleSelectStart}
         />
 
         <main className="flex min-w-0 flex-1 items-center justify-center px-6 py-6 lg:px-10">
@@ -83,6 +93,7 @@ function App() {
             improvising={improvising}
             operatorMode={operatorMode}
             layout={layout}
+            activeRetrancaId={activeRetrancaId}
           />
         </main>
       </div>

@@ -8,7 +8,16 @@ type TeleprompterProps = {
   improvising: boolean;
   operatorMode: boolean;
   layout: TeleprompterLayout;
+  activeRetrancaId?: string | null;
 };
+
+/** Alinha o topo do elemento com a linha do ponteiro (centro vertical). */
+function alignTopToPointer(scroller: HTMLElement, target: HTMLElement) {
+  const scrollerRect = scroller.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const pointerY = scrollerRect.top + scrollerRect.height / 2;
+  scroller.scrollTop += targetRect.top - pointerY;
+}
 
 export function Teleprompter({
   lines,
@@ -16,11 +25,14 @@ export function Teleprompter({
   improvising,
   operatorMode,
   layout,
+  activeRetrancaId = null,
 }: TeleprompterProps) {
   const frameRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const lastScrolledCursorRef = useRef<number | null>(null);
+  const lastRetrancaRef = useRef<string | null | undefined>(undefined);
   const [fullscreen, setFullscreen] = useState(false);
+  const [viewportPad, setViewportPad] = useState(0);
 
   const updateFullscreenState = useCallback(() => {
     setFullscreen(document.fullscreenElement === frameRef.current);
@@ -34,19 +46,55 @@ export function Teleprompter({
   }, [updateFullscreenState]);
 
   useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    function measure() {
+      setViewportPad(scroller.clientHeight / 2);
+    }
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, [fullscreen, lines.length]);
+
+  const cursorRef = useRef(cursor);
+  cursorRef.current = cursor;
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || lines.length === 0 || viewportPad <= 0) return;
+
+    lastRetrancaRef.current = activeRetrancaId;
+
+    const target = activeRetrancaId
+      ? scroller.querySelector<HTMLElement>(
+          `[data-retranca-id="${activeRetrancaId}"]`,
+        )
+      : scroller.querySelector<HTMLElement>("[data-script-line]");
+
+    if (!target) return;
+
+    alignTopToPointer(scroller, target);
+    requestAnimationFrame(() => {
+      alignTopToPointer(scroller, target);
+      lastScrolledCursorRef.current = cursorRef.current;
+    });
+  }, [activeRetrancaId, lines, viewportPad]);
+
+  useEffect(() => {
     if (operatorMode || improvising) return;
     if (lastScrolledCursorRef.current === cursor) return;
 
-    const current = scrollerRef.current?.querySelector(
+    const scroller = scrollerRef.current;
+    const current = scroller?.querySelector<HTMLElement>(
       '[data-current-word="true"]',
     );
-    if (!current) return;
+    if (!scroller || !current) return;
 
     lastScrolledCursorRef.current = cursor;
-    current.scrollIntoView({
-      block: "center",
-      behavior: operatorMode ? "auto" : "smooth",
-    });
+    alignTopToPointer(scroller, current);
   }, [cursor, improvising, lines, operatorMode]);
 
   async function toggleFullscreen() {
@@ -113,18 +161,24 @@ export function Teleprompter({
                 color: layout.colorNormal || undefined,
               }}
             >
-              <div className={`shrink-0 ${
-                operatorMode ? "h-80" : "min-h-[42%] grow"
-              }`}
-              aria-hidden="true" />
+              <div
+                className="shrink-0"
+                style={{ height: viewportPad }}
+                aria-hidden="true"
+              />
               <div>
                 {lines.length === 0 ? (
                   <p className="text-base opacity-60">
-                    Selecione um programa à esquerda.
+                    Importe um roteiro para exibir o texto completo.
                   </p>
                 ) : (
                   lines.map((line) => (
-                    <p key={line.id} className="mb-5">
+                    <p
+                      key={line.id}
+                      className="mb-5"
+                      data-script-line=""
+                      data-retranca-id={line.retrancaId}
+                    >
                       <span
                         className={
                           line.technical
@@ -172,10 +226,11 @@ export function Teleprompter({
                   ))
                 )}
               </div>
-              <div className={`shrink-0 ${
-                operatorMode ? "h-80" : "min-h-[42%] grow"
-              }`}
-              aria-hidden="true" />
+              <div
+                className="shrink-0"
+                style={{ height: viewportPad }}
+                aria-hidden="true"
+              />
             </div>
           </div>
 
