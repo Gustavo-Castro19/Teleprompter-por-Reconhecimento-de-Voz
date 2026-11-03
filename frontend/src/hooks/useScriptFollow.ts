@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   flattenProgram,
   tokenizeSpoken,
@@ -7,6 +7,7 @@ import {
 } from "../lib/scriptModel";
 import {
   followSpokenScript,
+  resetFollowHysteresis,
   type FollowState,
 } from "../lib/speechScriptMatcher";
 import type { Program } from "../service/api";
@@ -36,11 +37,15 @@ export function useScriptFollow(
     improvising: false,
   });
 
+  const lastSpokenTailRef = useRef("");
+
   useEffect(() => {
     const cursor = Math.max(
       0,
       Math.min(anchorWordIndex, Math.max(prepared.scriptWords.length, 0)),
     );
+    lastSpokenTailRef.current = "";
+    resetFollowHysteresis();
     setFollow({ cursor, improvising: false });
   }, [program, anchorWordIndex, prepared.scriptWords.length]);
 
@@ -48,6 +53,11 @@ export function useScriptFollow(
     if (!transcript.trim()) return;
 
     const spoken = tokenizeSpoken(transcript).slice(-SPOKEN_TAIL);
+    // Tail idêntico → nada mudou de fato (interim repetido / throttle residual).
+    const tailKey = spoken.join(" ");
+    if (tailKey === lastSpokenTailRef.current) return;
+    lastSpokenTailRef.current = tailKey;
+
     setFollow((previous) =>
       followSpokenScript(prepared.scriptWords, spoken, previous),
     );
