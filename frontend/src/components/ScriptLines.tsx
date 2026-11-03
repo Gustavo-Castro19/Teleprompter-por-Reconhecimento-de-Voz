@@ -55,10 +55,10 @@ export function ScriptLines({
                             color: layout.colorSpoken,
                             opacity: 0.7,
                           }
-                        : isCurrent
+                        : isCurrent && layout.colorCurrent
                           ? {
                               backgroundColor: layout.colorCurrent,
-                              color: layout.colorCurrentFg,
+                              color: layout.colorCurrentFg || undefined,
                             }
                           : undefined
                   }

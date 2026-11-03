@@ -260,24 +260,22 @@ export function OnAirTeleprompter({
               </div>
             </div>
 
-            <div
-              className="pointer-events-none absolute left-3 z-10 -translate-y-1/2"
-              style={{ top: pointerTop }}
-              aria-hidden="true"
-            >
-              <svg
-                width="32"
-                height="36"
-                viewBox="0 0 28 32"
-                className="drop-shadow"
+            {layout.pointerColor ? (
+              <div
+                className="pointer-events-none absolute left-3 z-10 -translate-y-1/2"
+                style={{ top: pointerTop, color: layout.pointerColor }}
+                aria-hidden="true"
               >
-                <polygon
-                  points="0,0 28,16 0,32"
-                  fill="currentColor"
-                  className="text-red-600 dark:text-red-400"
-                />
-              </svg>
-            </div>
+                <svg
+                  width="32"
+                  height="36"
+                  viewBox="0 0 28 32"
+                  className="drop-shadow"
+                >
+                  <polygon points="0,0 28,16 0,32" fill="currentColor" />
+                </svg>
+              </div>
+            ) : null}
           </div>
         </div>
       )}
