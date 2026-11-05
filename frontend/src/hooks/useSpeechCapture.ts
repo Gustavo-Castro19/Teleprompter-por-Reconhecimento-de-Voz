@@ -6,6 +6,8 @@ type CaptureStatus = "idle" | "listening" | "reconnecting" | "error";
 const LANG = "pt-BR";
 const MAX_NETWORK_RETRIES = 6;
 const NETWORK_RETRY_MS = 600;
+/** Interim chega em rajadas; ~150ms reduz re-renders sem atrasar finais. */
+const INTERIM_THROTTLE_MS = 150;
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   if (typeof window === "undefined") return null;
@@ -24,12 +26,31 @@ export function useSpeechCapture() {
   const networkRetriesRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const preferredLabelRef = useRef("default mic");
+  const lastInterimEmitRef = useRef(0);
+  const pendingInterimRef = useRef<string | null>(null);
+  const interimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearRetryTimer = useCallback(() => {
     if (retryTimerRef.current !== null) {
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
     }
+  }, []);
+
+  const clearInterimTimer = useCallback(() => {
+    if (interimTimerRef.current !== null) {
+      clearTimeout(interimTimerRef.current);
+      interimTimerRef.current = null;
+    }
+    pendingInterimRef.current = null;
+  }, []);
+
+  const publishTranscript = useCallback((full: string) => {
+    console.log("[speech]", full);
+    networkRetriesRef.current = 0;
+    setError(null);
+    setStatus("listening");
+    setTranscript(full);
   }, []);
 
   const detachRecognition = useCallback(() => {
@@ -51,9 +72,10 @@ export function useSpeechCapture() {
     listeningRef.current = false;
     networkRetriesRef.current = 0;
     clearRetryTimer();
+    clearInterimTimer();
     detachRecognition();
     setStatus("idle");
-  }, [clearRetryTimer, detachRecognition]);
+  }, [clearRetryTimer, clearInterimTimer, detachRecognition]);
 
   const bindRecognition = useCallback(
     (recognition: SpeechRecognition) => {
@@ -64,11 +86,13 @@ export function useSpeechCapture() {
       recognition.onresult = (event) => {
         let sessionFinal = "";
         let interim = "";
+        let sawFinal = false;
 
         for (let i = 0; i < event.results.length; i++) {
           const piece = event.results[i][0]?.transcript ?? "";
           if (event.results[i].isFinal) {
             sessionFinal += `${piece} `;
+            sawFinal = true;
           } else {
             interim = piece;
           }
@@ -79,11 +103,38 @@ export function useSpeechCapture() {
           .replace(/\s+/g, " ")
           .trim();
 
-        console.log("[speech]", full);
-        networkRetriesRef.current = 0;
-        setError(null);
-        setStatus("listening");
-        setTranscript(full);
+        // Finais passam na hora; interim sofre throttle.
+        if (sawFinal) {
+          clearInterimTimer();
+          lastInterimEmitRef.current = Date.now();
+          publishTranscript(full);
+          return;
+        }
+
+        const now = Date.now();
+        const elapsed = now - lastInterimEmitRef.current;
+        if (elapsed >= INTERIM_THROTTLE_MS) {
+          lastInterimEmitRef.current = now;
+          pendingInterimRef.current = null;
+          if (interimTimerRef.current !== null) {
+            clearTimeout(interimTimerRef.current);
+            interimTimerRef.current = null;
+          }
+          publishTranscript(full);
+          return;
+        }
+
+        pendingInterimRef.current = full;
+        if (interimTimerRef.current === null) {
+          interimTimerRef.current = setTimeout(() => {
+            interimTimerRef.current = null;
+            const pending = pendingInterimRef.current;
+            pendingInterimRef.current = null;
+            if (pending === null || !listeningRef.current) return;
+            lastInterimEmitRef.current = Date.now();
+            publishTranscript(pending);
+          }, INTERIM_THROTTLE_MS - elapsed);
+        }
       };
 
       recognition.onerror = (event) => {
@@ -99,6 +150,7 @@ export function useSpeechCapture() {
           if (networkRetriesRef.current >= MAX_NETWORK_RETRIES) {
             listeningRef.current = false;
             clearRetryTimer();
+            clearInterimTimer();
             detachRecognition();
             setStatus("error");
             setError(
@@ -116,6 +168,7 @@ export function useSpeechCapture() {
           );
 
           clearRetryTimer();
+          clearInterimTimer();
           detachRecognition();
 
           retryTimerRef.current = setTimeout(() => {
@@ -147,6 +200,7 @@ export function useSpeechCapture() {
         if (!listeningRef.current) return;
         listeningRef.current = false;
         clearRetryTimer();
+        clearInterimTimer();
         detachRecognition();
         setStatus("error");
         setError(event.message || `Erro de reconhecimento: ${event.error}`);
@@ -171,7 +225,7 @@ export function useSpeechCapture() {
         }
       };
     },
-    [clearRetryTimer, detachRecognition],
+    [clearRetryTimer, clearInterimTimer, detachRecognition, publishTranscript],
   );
 
   const start = useCallback(async () => {
@@ -187,6 +241,7 @@ export function useSpeechCapture() {
     networkRetriesRef.current = 0;
     committedRef.current = "";
     sessionFinalRef.current = "";
+    lastInterimEmitRef.current = 0;
     setTranscript("");
     setError(null);
     setStatus("listening");
@@ -229,8 +284,9 @@ export function useSpeechCapture() {
   const clearTranscript = useCallback(() => {
     committedRef.current = "";
     sessionFinalRef.current = "";
+    clearInterimTimer();
     setTranscript("");
-  }, []);
+  }, [clearInterimTimer]);
 
   const toggle = useCallback(() => {
     if (listeningRef.current) {
@@ -244,9 +300,10 @@ export function useSpeechCapture() {
     return () => {
       listeningRef.current = false;
       clearRetryTimer();
+      clearInterimTimer();
       detachRecognition();
     };
-  }, [clearRetryTimer, detachRecognition]);
+  }, [clearRetryTimer, clearInterimTimer, detachRecognition]);
 
   return {
     status,

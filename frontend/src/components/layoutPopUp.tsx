@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import {
+  DEFAULT_CURRENT_COLOR,
+  DEFAULT_CURRENT_FG,
+  DEFAULT_POINTER_COLOR,
   FONT_OPTIONS,
   type LayoutSection,
   type TeleprompterLayout,
@@ -173,23 +176,43 @@ export function LayoutPopUp({
               </label>
 
               <label className="flex flex-col gap-1.5">
-                <span>Marcador atual (fundo)</span>
+                <span>Marca-texto (fundo)</span>
                 <input
                   type="color"
                   className="h-10 w-full cursor-pointer rounded-md border border-current/25 bg-transparent"
-                  value={draft.colorCurrent}
+                  value={draft.colorCurrent || DEFAULT_CURRENT_COLOR}
                   onChange={(event) =>
-                    patch({ colorCurrent: event.target.value })
+                    patch({
+                      colorCurrent: event.target.value,
+                      colorCurrentFg:
+                        draft.colorCurrentFg || DEFAULT_CURRENT_FG,
+                    })
                   }
                 />
+                {draft.colorCurrent ? (
+                  <button
+                    type="button"
+                    className="text-left text-xs opacity-70 underline"
+                    onClick={() => patch({ colorCurrent: "" })}
+                  >
+                    Ocultar marca-texto
+                  </button>
+                ) : (
+                  <p className="text-xs opacity-70">Marca-texto oculto</p>
+                )}
               </label>
 
-              <label className="flex flex-col gap-1.5">
-                <span>Marcador atual (texto)</span>
+              <label
+                className={`flex flex-col gap-1.5 ${
+                  draft.colorCurrent ? "" : "opacity-50"
+                }`}
+              >
+                <span>Marca-texto (texto)</span>
                 <input
                   type="color"
-                  className="h-10 w-full cursor-pointer rounded-md border border-current/25 bg-transparent"
-                  value={draft.colorCurrentFg}
+                  disabled={!draft.colorCurrent}
+                  className="h-10 w-full cursor-pointer rounded-md border border-current/25 bg-transparent disabled:cursor-not-allowed"
+                  value={draft.colorCurrentFg || DEFAULT_CURRENT_FG}
                   onChange={(event) =>
                     patch({ colorCurrentFg: event.target.value })
                   }
@@ -206,6 +229,29 @@ export function LayoutPopUp({
                     patch({ colorSpoken: event.target.value })
                   }
                 />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span>Ponteiro (seta)</span>
+                <input
+                  type="color"
+                  className="h-10 w-full cursor-pointer rounded-md border border-current/25 bg-transparent"
+                  value={draft.pointerColor || DEFAULT_POINTER_COLOR}
+                  onChange={(event) =>
+                    patch({ pointerColor: event.target.value })
+                  }
+                />
+                {draft.pointerColor ? (
+                  <button
+                    type="button"
+                    className="text-left text-xs opacity-70 underline"
+                    onClick={() => patch({ pointerColor: "" })}
+                  >
+                    Ocultar ponteiro
+                  </button>
+                ) : (
+                  <p className="text-xs opacity-70">Ponteiro oculto</p>
+                )}
               </label>
             </div>
           )}

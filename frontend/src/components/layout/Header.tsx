@@ -1,5 +1,5 @@
-import { OperatorModeToggle } from "../OperatorModeToggle";
 import { SpeechCaptureButton } from "../SpeechCaptureButton";
+import { OperatorModeToggle } from "../OperatorModeToggle";
 import File from "../menu/File";
 import LayoutMenu from "../menu/Layout";
 import Settings from "../menu/Settings";
@@ -12,10 +12,10 @@ type HeaderProps = {
   transcript: string;
   isSpeechSupported: boolean;
   onToggleCapture: () => void;
-  operatorMode: boolean;
-  onOperatorModeChange: (enabled: boolean) => void;
   layout: TeleprompterLayout;
   onLayoutChange: (next: TeleprompterLayout) => void;
+  operatorMode: boolean;
+  onOperatorModeChange: (enabled: boolean) => void;
 };
 
 function Header({
@@ -25,10 +25,10 @@ function Header({
   transcript,
   isSpeechSupported,
   onToggleCapture,
-  operatorMode,
-  onOperatorModeChange,
   layout,
   onLayoutChange,
+  operatorMode,
+  onOperatorModeChange,
 }: HeaderProps) {
   return (
     <header className="flex flex-wrap items-center gap-5 border-b border-current/20 p-4">

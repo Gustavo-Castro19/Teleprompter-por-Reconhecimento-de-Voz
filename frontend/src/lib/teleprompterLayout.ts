@@ -7,21 +7,32 @@ export type TeleprompterLayout = {
   fontSizePx: number;
   textAlign: TextAlign;
   colorNormal: string;
+  /** Fundo do marca-texto da palavra atual; string vazia oculta o marcador. */
   colorCurrent: string;
   colorCurrentFg: string;
   colorSpoken: string;
+  /** Cor da seta-ponteiro; string vazia oculta o ponteiro. */
+  pointerColor: string;
 };
 
 export const LAYOUT_STORAGE_KEY = "teleprompter-layout";
+
+/** Fundo padrão do marca-texto da palavra atual. */
+export const DEFAULT_CURRENT_COLOR = "#fcd34d";
+/** Texto padrão sobre o marca-texto. */
+export const DEFAULT_CURRENT_FG = "#000000";
+/** Vermelho padrão da seta (equiv. text-red-600). */
+export const DEFAULT_POINTER_COLOR = "#dc2626";
 
 export const DEFAULT_LAYOUT: TeleprompterLayout = {
   fontFamily: "",
   fontSizePx: 36,
   textAlign: "center",
   colorNormal: "",
-  colorCurrent: "#fcd34d",
-  colorCurrentFg: "#000000",
+  colorCurrent: DEFAULT_CURRENT_COLOR,
+  colorCurrentFg: DEFAULT_CURRENT_FG,
   colorSpoken: "#047857",
+  pointerColor: DEFAULT_POINTER_COLOR,
 };
 
 export const FONT_OPTIONS: { label: string; value: string }[] = [
