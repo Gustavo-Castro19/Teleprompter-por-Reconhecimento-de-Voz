@@ -13,17 +13,22 @@ export type PromptLine = {
   text: string;
   technical: boolean;
   words: PromptWord[];
+  /** Marcador RETRANCA na primeira linha do bloco, se houver. */
+  retrancaId?: string;
 };
 
 export type PreparedScript = {
   lines: PromptLine[];
   scriptWords: string[];
+  markers: RetrancaMarker[];
 };
 
-export type ScriptBlockItem = {
+export type RetrancaMarker = {
   id: string;
   title: string;
-  block: Block;
+  pg_index: string;
+  startWordIndex: number;
+  startLineId: number;
 };
 
 const COMMAND_PATTERN = /\{\{[\s\S]*?\}\}/;
@@ -52,29 +57,15 @@ export function tokenizeSpoken(text: string): string[] {
     .filter(Boolean);
 }
 
-export function listScriptBlocks(programs: Program[]): ScriptBlockItem[] {
-  const items: ScriptBlockItem[] = [];
-
-  programs.forEach((program, programIndex) => {
-    program.blocks.forEach((block, blockIndex) => {
-      items.push({
-        id: `${programIndex}-${blockIndex}`,
-        title: block.program_name || program.name || "Programa sem nome",
-        block: {
-          ...block,
-          pg_index: block.pg_index ?? "",
-        },
-      });
-    });
-  });
-
-  return items;
-}
-
-export function flattenBlock(block: Block): PreparedScript {
-  const lines: PromptLine[] = [];
-  const scriptWords: string[] = [];
-  let lineId = 0;
+function appendBlockLines(
+  block: Block,
+  lines: PromptLine[],
+  scriptWords: string[],
+  lineIdStart: number,
+  retrancaId?: string,
+): number {
+  let lineId = lineIdStart;
+  let isFirstLine = true;
 
   for (const subblock of block.subblocks) {
     for (const text of subblock.lines) {
@@ -120,9 +111,52 @@ export function flattenBlock(block: Block): PreparedScript {
         text,
         technical,
         words,
+        retrancaId: isFirstLine ? retrancaId : undefined,
       });
+      isFirstLine = false;
     }
   }
 
-  return { lines, scriptWords };
+  return lineId;
+}
+
+/** Concatena todos os blocos do programa em um roteiro único com marcadores RETRANCA. */
+export function flattenProgram(program: Program): PreparedScript {
+  const lines: PromptLine[] = [];
+  const scriptWords: string[] = [];
+  const markers: RetrancaMarker[] = [];
+  let lineId = 0;
+
+  program.blocks.forEach((block, blockIndex) => {
+    const id = `${blockIndex}`;
+    const startLineId = lineId;
+    const startWordIndex = scriptWords.length;
+    const title =
+      block.program_name?.trim() ||
+      program.name ||
+      "Retranca sem nome";
+
+    markers.push({
+      id,
+      title,
+      pg_index: block.pg_index ?? "",
+      startWordIndex,
+      startLineId,
+    });
+
+    lineId = appendBlockLines(
+      block,
+      lines,
+      scriptWords,
+      lineId,
+      id,
+    );
+  });
+
+  return { lines, scriptWords, markers };
+}
+
+export function listRetrancas(program: Program | null): RetrancaMarker[] {
+  if (!program) return [];
+  return flattenProgram(program).markers;
 }

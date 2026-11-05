@@ -1,41 +1,63 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  flattenBlock,
+  flattenProgram,
   tokenizeSpoken,
   type PromptLine,
+  type RetrancaMarker,
 } from "../lib/scriptModel";
 import {
   followSpokenScript,
-  INITIAL_FOLLOW_STATE,
+  resetFollowHysteresis,
   type FollowState,
 } from "../lib/speechScriptMatcher";
-import type { Block } from "../service/api";
+import type { Program } from "../service/api";
 
 /** Evita reprocessar transcript enorme a cada interim. */
 const SPOKEN_TAIL = 32;
 
 export function useScriptFollow(
-  block: Block | null,
+  program: Program | null,
   transcript: string,
-): FollowState & { scriptWords: string[]; lines: PromptLine[] } {
+  anchorWordIndex: number,
+): FollowState & {
+  scriptWords: string[];
+  lines: PromptLine[];
+  markers: RetrancaMarker[];
+} {
   const prepared = useMemo(
-    () => (block ? flattenBlock(block) : { lines: [], scriptWords: [] }),
-    [block],
+    () =>
+      program
+        ? flattenProgram(program)
+        : { lines: [], scriptWords: [], markers: [] },
+    [program],
   );
 
-  const [follow, setFollow] = useState<FollowState>(INITIAL_FOLLOW_STATE);
+  const [follow, setFollow] = useState<FollowState>({
+    cursor: 0,
+    improvising: false,
+  });
+
+  const lastSpokenTailRef = useRef("");
 
   useEffect(() => {
-    setFollow(INITIAL_FOLLOW_STATE);
-  }, [block]);
+    const cursor = Math.max(
+      0,
+      Math.min(anchorWordIndex, Math.max(prepared.scriptWords.length, 0)),
+    );
+    lastSpokenTailRef.current = "";
+    resetFollowHysteresis();
+    setFollow({ cursor, improvising: false });
+  }, [program, anchorWordIndex, prepared.scriptWords.length]);
 
   useEffect(() => {
-    if (!transcript.trim()) {
-      setFollow(INITIAL_FOLLOW_STATE);
-      return;
-    }
+    if (!transcript.trim()) return;
 
     const spoken = tokenizeSpoken(transcript).slice(-SPOKEN_TAIL);
+    // Tail idêntico → nada mudou de fato (interim repetido / throttle residual).
+    const tailKey = spoken.join(" ");
+    if (tailKey === lastSpokenTailRef.current) return;
+    lastSpokenTailRef.current = tailKey;
+
     setFollow((previous) =>
       followSpokenScript(prepared.scriptWords, spoken, previous),
     );
@@ -45,5 +67,6 @@ export function useScriptFollow(
     ...follow,
     scriptWords: prepared.scriptWords,
     lines: prepared.lines,
+    markers: prepared.markers,
   };
 }
