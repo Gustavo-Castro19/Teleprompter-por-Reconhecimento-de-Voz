@@ -45,7 +45,7 @@ export function OnAirTeleprompter({
   const lastScrolledCursorRef = useRef<number | null>(null);
   const lastRetrancaRef = useRef<string | null | undefined>(undefined);
   const lastScriptLenRef = useRef(0);
-  const lastAppliedRatioRef = useRef<number | null>(null);
+  const operatorScrollRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const tracker = scrollTrackerRef.current;
@@ -127,22 +127,36 @@ export function OnAirTeleprompter({
     trackAlignToPointer(scrollTrackerRef.current, scroller, current);
   }, [cursor, improvising, lines.length, operatorMode]);
 
-  // Modo operador: espelha o progresso de scroll 1:1 (sem lerp).
+  // Modo operador: suaviza o scroll espelhado do operador.
   useEffect(() => {
     if (!operatorMode) {
-      lastAppliedRatioRef.current = null;
       return;
     }
 
     const scroller = scrollerRef.current;
     if (!scroller) return;
 
-    if (lastAppliedRatioRef.current === operatorScrollRatio) return;
-    lastAppliedRatioRef.current = operatorScrollRatio;
-
     cancelScrollTracker(scrollTrackerRef.current);
     const max = scroller.scrollHeight - scroller.clientHeight;
-    scroller.scrollTop = max > 0 ? operatorScrollRatio * max : 0;
+    const target = max > 0 ? operatorScrollRatio * max : 0;
+    const step = () => {
+      const delta = target - scroller.scrollTop;
+      if (Math.abs(delta) < 0.5) {
+        scroller.scrollTop = target;
+        operatorScrollRafRef.current = null;
+        return;
+      }
+      scroller.scrollTop += delta * 0.2;
+      operatorScrollRafRef.current = requestAnimationFrame(step);
+    };
+
+    operatorScrollRafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (operatorScrollRafRef.current !== null) {
+        cancelAnimationFrame(operatorScrollRafRef.current);
+        operatorScrollRafRef.current = null;
+      }
+    };
   }, [operatorMode, operatorScrollRatio, lines.length, pads.top]);
 
   async function toggleFullscreen() {
