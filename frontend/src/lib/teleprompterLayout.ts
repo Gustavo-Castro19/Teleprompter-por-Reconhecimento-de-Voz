@@ -25,9 +25,9 @@ export const DEFAULT_CURRENT_FG = "#000000";
 export const DEFAULT_POINTER_COLOR = "#dc2626";
 
 export const DEFAULT_LAYOUT: TeleprompterLayout = {
-  fontFamily: "",
-  fontSizePx: 36,
-  textAlign: "center",
+  fontFamily: "Arial, Helvetica, sans-serif",
+  fontSizePx: 72,
+  textAlign: "left",
   colorNormal: "",
   colorCurrent: DEFAULT_CURRENT_COLOR,
   colorCurrentFg: DEFAULT_CURRENT_FG,
