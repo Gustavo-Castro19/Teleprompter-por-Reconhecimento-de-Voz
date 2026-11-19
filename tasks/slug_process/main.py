@@ -1,5 +1,4 @@
 import socket
-import secrets
 import json
 import asyncio
 import logging
@@ -8,13 +7,14 @@ import uvicorn
 from fastapi import FastAPI
 from common.logging_config import setup_logging
 from common.paths import LOG_SLUG_DIR
+from slug_process.router import router
+from slug_process.security import TOKEN
 
 setup_logging(LOG_SLUG_DIR, "slug_process")
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-
-TOKEN = secrets.token_urlsafe(32)
+app.include_router(router)
 
 async def main():
     logger.info("Iniciando slug_process")
